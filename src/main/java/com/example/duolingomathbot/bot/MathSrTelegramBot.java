@@ -213,6 +213,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 }
                 try {
                     long topicId = Long.parseLong(trimmed);
+
                     userTrainingService.addTask(topicId, "FILE_ID:" + data.fileId, data.answer);
                     sendMessage(chatId, "Задача успешно добавлена");
                 } catch (Exception e) {
