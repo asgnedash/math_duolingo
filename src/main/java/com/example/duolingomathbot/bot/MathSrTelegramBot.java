@@ -3,6 +3,7 @@ package com.example.duolingomathbot.bot;
 import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.service.UserTrainingService;
+import com.example.duolingomathbot.bot.BotConfig;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
