@@ -186,4 +186,17 @@ public class UserTrainingService {
         user.incrementTrainingCounter();
         userRepository.save(user);
     }
+
+    @Transactional(readOnly = true)
+    public List<Topic> getAllTopics() {
+        return topicRepository.findAll();
+    }
+
+    @Transactional
+    public Task addTask(Long topicId, String content, String answer) {
+        Topic topic = topicRepository.findById(topicId)
+                .orElseThrow(() -> new IllegalArgumentException("Topic not found with ID: " + topicId));
+        Task task = new Task(topic, content, answer, 1.0);
+        return taskRepository.save(task);
+    }
 }
