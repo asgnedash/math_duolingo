@@ -186,4 +186,28 @@ public class UserTrainingService {
         user.incrementTrainingCounter();
         userRepository.save(user);
     }
+
+    @Transactional(readOnly = true)
+    public List<Topic> getAllTopics() {
+        return topicRepository.findAll();
+    }
+
+    @Transactional
+    public Task addTask(Long topicId, String content, String answer) {
+        Topic topic = topicRepository.findById(topicId)
+                .orElseThrow(() -> new IllegalArgumentException("Topic not found with ID: " + topicId));
+        Task task = new Task(topic, content, answer, 1.0);
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public Topic createTopic(String name) {
+        if (topicRepository.findByName(name).isPresent()) {
+            throw new IllegalArgumentException("Topic already exists: " + name);
+        }
+        Topic topic = new Topic();
+        topic.setName(name);
+        topic.setMaxDifficultyInTopic(1.0);
+        return topicRepository.save(topic);
+    }
 }
