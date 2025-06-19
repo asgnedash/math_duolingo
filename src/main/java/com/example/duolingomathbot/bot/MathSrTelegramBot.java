@@ -328,7 +328,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         tryExecute(message);
     }
 
-    private <T extends org.telegram.telegrambots.meta.api.methods.BotApiMethod<M>, M extends java.io.Serializable> void tryExecute(T method) {
+    private void tryExecute(org.telegram.telegrambots.meta.api.methods.BotApiMethod<?> method) {
         try {
             execute(method);
         } catch (TelegramApiException e) {
@@ -336,6 +336,14 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             if (e.getMessage() != null && e.getMessage().contains("bot token is already in use")) {
                 logger.error("CRITICAL: Bot token is already in use. Stop other instances of the bot.");
             }
+        }
+    }
+
+    private void tryExecute(SendPhoto photo) {
+        try {
+            execute(photo);
+        } catch (TelegramApiException e) {
+            logger.error("Telegram API execution error for SendPhoto: {}", e.getMessage(), e);
         }
     }
 }
