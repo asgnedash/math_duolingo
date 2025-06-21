@@ -3,6 +3,7 @@ package com.example.duolingomathbot.bot;
 import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.service.UserTrainingService;
+import com.example.duolingomathbot.bot.BotConfig;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +43,12 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
     private static final long ADMIN_CHAT_ID = 262398881L;
 
-    private enum AddTaskStep { WAITING_FOR_PHOTO, WAITING_FOR_ANSWER, WAITING_FOR_TOPIC }
+    private enum AddTaskStep {
+        WAITING_FOR_PHOTO,
+        WAITING_FOR_ANSWER,
+        WAITING_FOR_TOPIC,
+        WAITING_FOR_NEW_TOPIC_NAME
+    }
 
     private static class PendingTaskData {
         AddTaskStep step;
@@ -196,16 +202,36 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 data.step = AddTaskStep.WAITING_FOR_TOPIC;
                 StringBuilder sb = new StringBuilder("Доступные темы:\n");
                 userTrainingService.getAllTopics().forEach(t -> sb.append(t.getId()).append(" - ").append(t.getName()).append("\n"));
-                sendMessage(chatId, sb.toString() + "\nВведите id подходящей темы:");
+                sendMessage(chatId, sb.toString() + "\nВведите id подходящей темы или 'new' для создания новой:");
             }
             case WAITING_FOR_TOPIC -> {
+                String trimmed = text.trim();
+                if ("new".equalsIgnoreCase(trimmed)) {
+                    data.step = AddTaskStep.WAITING_FOR_NEW_TOPIC_NAME;
+                    sendMessage(chatId, "Введите название новой темы:");
+                    return;
+                }
                 try {
-                    long topicId = Long.parseLong(text.trim());
+                    long topicId = Long.parseLong(trimmed);
+
                     userTrainingService.addTask(topicId, "FILE_ID:" + data.fileId, data.answer);
                     sendMessage(chatId, "Задача успешно добавлена");
                 } catch (Exception e) {
                     logger.error("Error saving new task", e);
                     sendMessage(chatId, "Произошла ошибка при сохранении задачи");
+                } finally {
+                    pendingTasks.remove(chatId);
+                }
+            }
+            case WAITING_FOR_NEW_TOPIC_NAME -> {
+                String name = text.trim();
+                try {
+                    long newTopicId = userTrainingService.createTopic(name).getId();
+                    userTrainingService.addTask(newTopicId, "FILE_ID:" + data.fileId, data.answer);
+                    sendMessage(chatId, "Новая тема создана и задача добавлена");
+                } catch (Exception e) {
+                    logger.error("Error creating topic or saving task", e);
+                    sendMessage(chatId, "Ошибка при создании темы или сохранении задачи");
                 } finally {
                     pendingTasks.remove(chatId);
                 }
