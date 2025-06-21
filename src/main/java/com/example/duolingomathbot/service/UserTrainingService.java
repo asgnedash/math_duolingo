@@ -10,6 +10,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,7 @@ public class UserTrainingService {
     private final UserTopicProgressRepository userTopicProgressRepository;
     private final UserTaskAttemptRepository userTaskAttemptRepository;
     private final Random random = new Random();
+
 
     @Autowired
     public UserTrainingService(UserRepository userRepository,
@@ -74,7 +76,7 @@ public class UserTrainingService {
                     return Optional.of(tasksForReview.get(0));
                 }
 
-                Optional<Task> randomTask = taskRepository.findRandomTaskInTopic(topic.getId());
+                Optional<Task> randomTask = getRandomTaskFromTopic(topic);
                 if (randomTask.isPresent()) {
                     logger.info("Serving random task {} from topic {} (SRS - general topic review)", randomTask.get().getId(), topic.getName());
                     return randomTask;
@@ -117,7 +119,15 @@ public class UserTrainingService {
         if (!unattemptedTasks.isEmpty()) {
             return Optional.of(unattemptedTasks.get(random.nextInt(unattemptedTasks.size())));
         }
-        return taskRepository.findRandomTaskInTopic(topic.getId());
+        return getRandomTaskFromTopic(topic);
+    }
+
+    private Optional<Task> getRandomTaskFromTopic(Topic topic) {
+        List<Task> tasks = taskRepository.findByTopic(topic);
+        if (tasks.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(tasks.get(random.nextInt(tasks.size())));
     }
 
 
