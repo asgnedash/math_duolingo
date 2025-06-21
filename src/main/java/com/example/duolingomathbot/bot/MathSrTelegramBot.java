@@ -4,6 +4,7 @@ import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.model.Topic;
 import com.example.duolingomathbot.model.TopicType;
+import com.example.duolingomathbot.model.Test;
 import com.example.duolingomathbot.service.UserTrainingService;
 import com.example.duolingomathbot.bot.BotConfig;
 import com.example.duolingomathbot.config.SrsConfig;
@@ -95,6 +96,35 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, PendingTaskData> pendingTasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ManageState> manageStates = new ConcurrentHashMap<>();
 
+    private enum MakeTestStep {
+        WAITING_COUNT,
+        WAITING_PHOTO,
+        WAITING_ANSWER,
+        WAITING_ADVICE
+    }
+
+    private static class MakeTestState {
+        MakeTestStep step;
+        int total;
+        int current;
+        long testId;
+        int startId;
+        String fileId;
+    }
+
+    private enum TestSessionStep { WAITING_ID, IN_PROGRESS }
+
+    private static class TestSession {
+        TestSessionStep step;
+        Test test;
+        java.util.List<Task> tasks;
+        int index;
+        int correct;
+    }
+
+    private final ConcurrentHashMap<Long, MakeTestState> makeTestStates = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, TestSession> testSessions = new ConcurrentHashMap<>();
+
 
     public MathSrTelegramBot(BotConfig botConfig, UserTrainingService userTrainingService) {
         super(botConfig.getBotToken());
@@ -127,6 +157,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             commands.add(new BotCommand("/cancel", "Отмена текущего действия"));
             commands.add(new BotCommand("/addtask", "Добавить задачу (админ)"));
             commands.add(new BotCommand("/managetopics", "Управление темами (админ)"));
+            commands.add(new BotCommand("/maketest", "Создать тест (админ)"));
+            commands.add(new BotCommand("/test", "Пройти тест"));
 
             SetMyCommands setMyCommands = new SetMyCommands(); // Создаем объект
             setMyCommands.setCommands(commands);               // Устанавливаем команды
@@ -134,7 +166,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics");
+            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /maketest, /test");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -214,6 +246,42 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (makeTestStates.containsKey(chatId)) {
+            processMakeTestText(chatId, messageText);
+            return;
+        }
+
+        TestSession ts = testSessions.get(internalUserId);
+        if (ts != null) {
+            if (ts.step == TestSessionStep.WAITING_ID) {
+                try {
+                    int sid = Integer.parseInt(messageText.trim());
+                    Optional<Test> opt = userTrainingService.getTestByStartId(sid);
+                    if (opt.isPresent()) {
+                        ts.test = opt.get();
+                        ts.tasks = userTrainingService.getTasksForTest(ts.test);
+                        if (ts.tasks.isEmpty()) {
+                            sendMessage(chatId, "Тест пуст.");
+                            testSessions.remove(internalUserId);
+                        } else {
+                            ts.step = TestSessionStep.IN_PROGRESS;
+                            ts.index = 0;
+                            ts.correct = 0;
+                            sendTestTask(chatId, ts);
+                        }
+                    } else {
+                        sendMessage(chatId, "Тест не найден. Попробуйте еще раз.");
+                    }
+                } catch (NumberFormatException e) {
+                    sendMessage(chatId, "Неверный формат номера теста.");
+                }
+                return;
+            } else if (ts.step == TestSessionStep.IN_PROGRESS) {
+                processTestAnswer(chatId, internalUserId, messageText);
+                return;
+            }
+        }
+
         if ("/addtask".equals(messageText)) {
             if (chatId != ADMIN_CHAT_ID) {
                 sendMessage(chatId, "Команда доступна только администратору");
@@ -235,6 +303,26 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             state.step = ManageTopicsStep.CHOOSING_ACTION;
             manageStates.put(chatId, state);
             sendManageTopicsMenu(chatId);
+            return;
+        }
+
+        if ("/maketest".equals(messageText)) {
+            if (chatId != ADMIN_CHAT_ID) {
+                sendMessage(chatId, "Команда доступна только администратору");
+                return;
+            }
+            MakeTestState st = new MakeTestState();
+            st.step = MakeTestStep.WAITING_COUNT;
+            makeTestStates.put(chatId, st);
+            sendMessage(chatId, "Сколько заданий будет в тесте?");
+            return;
+        }
+
+        if ("/test".equals(messageText)) {
+            TestSession session = new TestSession();
+            session.step = TestSessionStep.WAITING_ID;
+            testSessions.put(internalUserId, session);
+            sendMessage(chatId, "Введите номер теста:");
             return;
         }
 
@@ -331,16 +419,66 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    private void processMakeTestText(long chatId, String text) {
+        MakeTestState state = makeTestStates.get(chatId);
+        if (state == null) return;
+
+        switch (state.step) {
+            case WAITING_COUNT -> {
+                try {
+                    state.total = Integer.parseInt(text.trim());
+                    if (state.total <= 0) throw new NumberFormatException();
+                    Test t = userTrainingService.createTest();
+                    state.testId = t.getId();
+                    state.startId = t.getStartId();
+                    state.current = 0;
+                    state.step = MakeTestStep.WAITING_PHOTO;
+                    sendMessage(chatId, "Пришлите изображение задачи 1");
+                } catch (NumberFormatException e) {
+                    sendMessage(chatId, "Неверный ввод. Введите число.");
+                }
+            }
+            case WAITING_ANSWER -> {
+                userTrainingService.addTaskToTest(
+                        userTrainingService.getTestByStartId(state.startId).orElseThrow(),
+                        "FILE_ID:" + state.fileId, text.trim());
+                state.current++;
+                if (state.current < state.total) {
+                    state.step = MakeTestStep.WAITING_PHOTO;
+                    sendMessage(chatId, "Пришлите изображение задачи " + (state.current + 1));
+                } else {
+                    state.step = MakeTestStep.WAITING_ADVICE;
+                    sendMessage(chatId, "Введите совет для учеников:");
+                }
+            }
+            case WAITING_ADVICE -> {
+                Test t = userTrainingService.getTestByStartId(state.startId).orElseThrow();
+                userTrainingService.updateTestAdvice(t, text);
+                makeTestStates.remove(chatId);
+                sendMessage(chatId, "Тест создан. Номер: " + state.startId);
+            }
+            default -> sendMessage(chatId, "Отправьте изображение задачи");
+        }
+    }
+
     private void handlePhotoMessage(Update update) {
         long chatId = update.getMessage().getChatId();
         PendingTaskData data = pendingTasks.get(chatId);
-        if (data == null || data.step != AddTaskStep.WAITING_FOR_PHOTO) {
+        if (data != null && data.step == AddTaskStep.WAITING_FOR_PHOTO) {
+            String fileId = update.getMessage().getPhoto().get(update.getMessage().getPhoto().size() - 1).getFileId();
+            data.fileId = fileId;
+            data.step = AddTaskStep.WAITING_FOR_ANSWER;
+            sendMessage(chatId, "Введите правильный ответ на задачу");
             return;
         }
-        String fileId = update.getMessage().getPhoto().get(update.getMessage().getPhoto().size() - 1).getFileId();
-        data.fileId = fileId;
-        data.step = AddTaskStep.WAITING_FOR_ANSWER;
-        sendMessage(chatId, "Введите правильный ответ на задачу");
+
+        MakeTestState st = makeTestStates.get(chatId);
+        if (st != null && st.step == MakeTestStep.WAITING_PHOTO) {
+            String fileId = update.getMessage().getPhoto().get(update.getMessage().getPhoto().size() - 1).getFileId();
+            st.fileId = fileId;
+            st.step = MakeTestStep.WAITING_ANSWER;
+            sendMessage(chatId, "Введите правильный ответ");
+        }
     }
 
     private void handleCallbackQuery(Update update) {
@@ -523,6 +661,47 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    private void sendTestTask(long chatId, TestSession session) {
+        Task task = session.tasks.get(session.index);
+        if (task.getContent() != null && task.getContent().startsWith("FILE_ID:")) {
+            SendPhoto photo = new SendPhoto();
+            photo.setChatId(String.valueOf(chatId));
+            photo.setPhoto(new InputFile(task.getContent().substring(8)));
+            photo.setCaption("Введите ответ:");
+            tryExecute(photo);
+        } else {
+            SendMessage message = new SendMessage();
+            message.setChatId(String.valueOf(chatId));
+            message.setText(task.getContent() + "\n\nВведите ответ:");
+            tryExecute(message);
+        }
+    }
+
+    private void processTestAnswer(long chatId, Long internalUserId, String answer) {
+        TestSession session = testSessions.get(internalUserId);
+        if (session == null || session.step != TestSessionStep.IN_PROGRESS) return;
+
+        Task task = session.tasks.get(session.index);
+        if (userTrainingService.isAnswerCorrect(task, answer)) {
+            session.correct++;
+        }
+        session.index++;
+        if (session.index < session.tasks.size()) {
+            sendTestTask(chatId, session);
+        } else {
+            int total = session.tasks.size();
+            int wrong = total - session.correct;
+            StringBuilder sb = new StringBuilder();
+            sb.append("Правильных ответов: ").append(session.correct)
+                    .append("\nНеправильных ответов: ").append(wrong);
+            if (wrong > total / 3) {
+                if (session.test.getAdvice() != null) sb.append("\n\n").append(session.test.getAdvice());
+            }
+            sendMessage(chatId, sb.toString());
+            testSessions.remove(internalUserId);
+        }
+    }
+
     private void sendMessage(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
@@ -533,9 +712,11 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     private void resetUserState(long chatId, Long internalUserId) {
         pendingTasks.remove(chatId);
         manageStates.remove(chatId);
+        makeTestStates.remove(chatId);
         if (internalUserId != null) {
             userCurrentTaskIdMap.remove(internalUserId);
             userSessions.remove(internalUserId);
+            testSessions.remove(internalUserId);
         }
     }
 
