@@ -3,6 +3,8 @@ package com.example.duolingomathbot.model;
 import jakarta.persistence.*;
 import java.util.Objects;
 
+import com.example.duolingomathbot.model.TopicType;
+
 @Entity
 @Table(name = "users") // "user" is often a reserved keyword in SQL
 public class User {
@@ -20,6 +22,10 @@ public class User {
     @Column(name = "training_counter", nullable = false)
     private int trainingCounter = 0;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "exam_type", nullable = false)
+    private TopicType exam = TopicType.OGE;
+
     public User() {
     }
 
@@ -27,6 +33,7 @@ public class User {
         this.telegramId = telegramId;
         this.username = username;
         this.trainingCounter = 0;
+        this.exam = TopicType.OGE;
     }
 
     // Getters and Setters
@@ -60,6 +67,14 @@ public class User {
 
     public void setTrainingCounter(int trainingCounter) {
         this.trainingCounter = trainingCounter;
+    }
+
+    public TopicType getExam() {
+        return exam;
+    }
+
+    public void setExam(TopicType exam) {
+        this.exam = exam;
     }
 
     public void incrementTrainingCounter() {

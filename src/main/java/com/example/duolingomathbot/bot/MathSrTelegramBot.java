@@ -177,6 +177,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             commands.add(new BotCommand("/makemagnet", "Создать лидмагнит (админ)"));
             commands.add(new BotCommand("/maketest", "Создать тест (админ)"));
             commands.add(new BotCommand("/test", "Пройти тест"));
+            commands.add(new BotCommand("/settings", "Настройки"));
 
             SetMyCommands setMyCommands = new SetMyCommands(); // Создаем объект
             setMyCommands.setCommands(commands);               // Устанавливаем команды
@@ -184,7 +185,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /maketest, /test, /makemagnet");
+            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /maketest, /test, /makemagnet, /settings");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -372,6 +373,11 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
+        if ("/settings".equals(messageText)) {
+            sendSettings(chatId, internalUserId);
+            return;
+        }
+
         if ("/cancel".equals(messageText)) {
             resetUserState(chatId, internalUserId);
             sendMessage(chatId, "Действие отменено.");
@@ -411,6 +417,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 }
             } else {
                 sendMessage(chatId, "Добро пожаловать! Используйте /train для получения задачи.");
+                sendExamPrompt(chatId);
             }
         } else if ("/train".equals(messageText) || "задача".equalsIgnoreCase(messageText) || "next".equalsIgnoreCase(messageText)) {
             sendNextTask(chatId, internalUserId, true);
@@ -672,6 +679,19 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
+        if ("settings_change_exam".equals(callbackData)) {
+            sendExamPrompt(chatId);
+            return;
+        }
+
+        if (callbackData.startsWith("exam_select_")) {
+            String typeStr = callbackData.substring("exam_select_".length());
+            TopicType type = TopicType.valueOf(typeStr);
+            userTrainingService.updateUserExam(internalUserId, type);
+            sendMessage(chatId, "Вы выбрали подготовку к " + type.getDisplayName() + "\nИзменить выбор можно с помощью команды /settings");
+            return;
+        }
+
         Long currentTaskId = userCurrentTaskIdMap.get(internalUserId);
 
         if (currentTaskId == null) {
@@ -923,6 +943,36 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
         msg.setText(sb.toString());
+        tryExecute(msg);
+    }
+
+    private void sendExamPrompt(long chatId) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<InlineKeyboardButton> row = new ArrayList<>();
+        row.add(InlineKeyboardButton.builder().text("ОГЭ").callbackData("exam_select_OGE").build());
+        row.add(InlineKeyboardButton.builder().text("ЕГЭ").callbackData("exam_select_EGE").build());
+        markup.setKeyboard(Collections.singletonList(row));
+
+        SendMessage msg = new SendMessage();
+        msg.setChatId(String.valueOf(chatId));
+        msg.setText("Выберите, к какому экзамену вы готовитесь");
+        msg.setReplyMarkup(markup);
+        tryExecute(msg);
+    }
+
+    private void sendSettings(long chatId, Long userId) {
+        TopicType exam = userTrainingService.getUserExam(userId);
+        InlineKeyboardButton changeBtn = InlineKeyboardButton.builder()
+                .text("Изменить экзамен")
+                .callbackData("settings_change_exam")
+                .build();
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(Collections.singletonList(Collections.singletonList(changeBtn)));
+
+        SendMessage msg = new SendMessage();
+        msg.setChatId(String.valueOf(chatId));
+        msg.setText("Вы готовитесь к экзамену: " + exam.getDisplayName() + "\n\nВыберите действие:");
+        msg.setReplyMarkup(markup);
         tryExecute(msg);
     }
 
