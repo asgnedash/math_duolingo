@@ -19,6 +19,7 @@ public class Topic {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(8) default 'OBA'")
+
     private TopicType type = TopicType.OBA;
 
     @Column(name = "order_index")
