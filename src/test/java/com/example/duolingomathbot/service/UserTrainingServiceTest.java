@@ -65,4 +65,65 @@ class UserTrainingServiceTest {
         assertTrue(service.isAnswerCorrect(task, " answer "));
         assertFalse(service.isAnswerCorrect(task, "wrong"));
     }
+
+    @Test
+    void createTopicThrowsWhenDuplicateExists() {
+        Topic existing = new Topic("geom", TopicType.OGE, 1.0);
+        when(topicRepository.findByNameAndType("geom", TopicType.OGE))
+                .thenReturn(Optional.of(existing));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createTopic("geom", TopicType.OGE));
+
+        verify(topicRepository, never()).save(any());
+    }
+
+    @Test
+    void createTopicSavesNewTopicWhenMissing() {
+        when(topicRepository.findByNameAndType("alg", TopicType.EGE))
+                .thenReturn(Optional.empty());
+        when(topicRepository.save(any(Topic.class)))
+                .thenAnswer(invocation -> {
+                    Topic t = invocation.getArgument(0);
+                    t.setId(10L);
+                    return t;
+                });
+
+        Topic created = service.createTopic("alg", TopicType.EGE);
+
+        assertEquals("alg", created.getName());
+        assertEquals(TopicType.EGE, created.getType());
+        assertEquals(1.0, created.getMaxDifficultyInTopic());
+        assertEquals(10L, created.getId());
+        verify(topicRepository).save(any(Topic.class));
+    }
+
+    @Test
+    void addTaskCreatesAndSavesTask() {
+        Topic topic = new Topic("topic", TopicType.OGE, 1.0);
+        when(topicRepository.findById(1L)).thenReturn(Optional.of(topic));
+        when(taskRepository.save(any(Task.class)))
+                .thenAnswer(invocation -> {
+                    Task t = invocation.getArgument(0);
+                    t.setId(5L);
+                    return t;
+                });
+
+        Task task = service.addTask(1L, "content", "answer");
+
+        assertEquals(topic, task.getTopic());
+        assertEquals("content", task.getContent());
+        assertEquals("answer", task.getAnswer());
+        assertEquals(1.0, task.getDifficulty());
+        assertEquals(5L, task.getId());
+        verify(taskRepository).save(any(Task.class));
+    }
+
+    @Test
+    void addTaskThrowsWhenTopicMissing() {
+        when(topicRepository.findById(anyLong())).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.addTask(2L, "c", "a"));
+    }
 }
