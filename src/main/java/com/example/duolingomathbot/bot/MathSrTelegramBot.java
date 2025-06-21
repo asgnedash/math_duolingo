@@ -124,6 +124,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             commands.add(new BotCommand("/start", "Запуск бота"));
             commands.add(new BotCommand("/train", "Следующая задача"));
             commands.add(new BotCommand("/help", "Помощь"));
+            commands.add(new BotCommand("/cancel", "Отмена текущего действия"));
             commands.add(new BotCommand("/addtask", "Добавить задачу (админ)"));
             commands.add(new BotCommand("/managetopics", "Управление темами (админ)"));
 
@@ -133,7 +134,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /train, /help, /addtask, /managetopics");
+            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -234,6 +235,12 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             state.step = ManageTopicsStep.CHOOSING_ACTION;
             manageStates.put(chatId, state);
             sendManageTopicsMenu(chatId);
+            return;
+        }
+
+        if ("/cancel".equals(messageText)) {
+            resetUserState(chatId, internalUserId);
+            sendMessage(chatId, "Действие отменено.");
             return;
         }
 
@@ -521,6 +528,15 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
         tryExecute(message);
+    }
+
+    private void resetUserState(long chatId, Long internalUserId) {
+        pendingTasks.remove(chatId);
+        manageStates.remove(chatId);
+        if (internalUserId != null) {
+            userCurrentTaskIdMap.remove(internalUserId);
+            userSessions.remove(internalUserId);
+        }
     }
 
     private void sendTopicsPrompt(long chatId) {
