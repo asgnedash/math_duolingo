@@ -301,7 +301,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                             ts.step = TestSessionStep.IN_PROGRESS;
                             ts.index = 0;
                             ts.correct = 0;
-                            sendTestTask(chatId, ts);
+                            sendTestTask(chatId, ts, null);
                         }
                     } else {
                         sendMessage(chatId, "Тест не найден. Попробуйте еще раз.");
@@ -400,7 +400,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                                 session.index = 0;
                                 session.correct = 0;
                                 testSessions.put(internalUserId, session);
-                                sendTestTask(chatId, session);
+                                sendTestTask(chatId, session, null);
                             }
                         } else {
                             sendMessage(chatId, "Ссылка недействительна");
@@ -685,9 +685,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             userTrainingService.processAnswer(internalUserId, currentTaskId, isCorrect);
             userCurrentTaskIdMap.remove(internalUserId); // Очищаем ID текущей задачи после ответа
 
-            String feedback = isCorrect ? "Отлично! Правильно! ✅" : "Неверно. ❌";
-            sendMessage(chatId, feedback);
-            sendNextTask(chatId, internalUserId, false); // Сразу следующую задачу
+            sendNextTask(chatId, internalUserId, false, isCorrect); // Сразу следующую задачу
         }
     }
 
@@ -701,12 +699,14 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         boolean isCorrect = userTrainingService.processAnswer(internalUserId, taskId, userAnswer);
         userCurrentTaskIdMap.remove(internalUserId);
 
-        String feedback = isCorrect ? "Отлично! Правильно! ✅" : "Неверно. ❌";
-        sendMessage(chatId, feedback);
-        sendNextTask(chatId, internalUserId, false);
+        sendNextTask(chatId, internalUserId, false, isCorrect);
     }
 
     private void sendNextTask(long chatId, Long internalUserId, boolean userInitiated) {
+        sendNextTask(chatId, internalUserId, userInitiated, null);
+    }
+
+    private void sendNextTask(long chatId, Long internalUserId, boolean userInitiated, Boolean prevCorrect) {
         TrainingSession session = userSessions.get(internalUserId);
         if (session == null || userInitiated) {
             session = new TrainingSession();
@@ -733,37 +733,50 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             }
             session.served++;
 
+            String prefix = "";
+            if (prevCorrect != null) {
+                prefix = prevCorrect ? "Верно\n" : "Неверно\n";
+            }
+
             if (task.getContent() != null && task.getContent().startsWith("FILE_ID:")) {
                 SendPhoto photo = new SendPhoto();
                 photo.setChatId(String.valueOf(chatId));
                 photo.setPhoto(new InputFile(task.getContent().substring(8)));
-                photo.setCaption("Введите ответ:");
+                photo.setCaption(prefix + "Введите ответ:");
                 tryExecute(photo);
             } else {
                 SendMessage message = new SendMessage();
                 message.setChatId(String.valueOf(chatId));
-                message.setText(task.getContent() + "\n\nВведите ответ:");
+                message.setText(prefix + task.getContent() + "\n\nВведите ответ:");
                 tryExecute(message);
             }
         } else {
             userCurrentTaskIdMap.remove(internalUserId);
             userSessions.remove(internalUserId);
-            sendMessage(chatId, "На сегодня задач больше нет или не удалось подобрать подходящую. Заглядывай позже!");
+            String prefix = "";
+            if (prevCorrect != null) {
+                prefix = prevCorrect ? "Верно\n" : "Неверно\n";
+            }
+            sendMessage(chatId, prefix + "На сегодня задач больше нет или не удалось подобрать подходящую. Заглядывай позже!");
         }
     }
 
-    private void sendTestTask(long chatId, TestSession session) {
+    private void sendTestTask(long chatId, TestSession session, Boolean prevCorrect) {
         Task task = session.tasks.get(session.index);
+        String prefix = "";
+        if (prevCorrect != null) {
+            prefix = prevCorrect ? "Верно\n" : "Неверно\n";
+        }
         if (task.getContent() != null && task.getContent().startsWith("FILE_ID:")) {
             SendPhoto photo = new SendPhoto();
             photo.setChatId(String.valueOf(chatId));
             photo.setPhoto(new InputFile(task.getContent().substring(8)));
-            photo.setCaption("Введите ответ:");
+            photo.setCaption(prefix + "Введите ответ:");
             tryExecute(photo);
         } else {
             SendMessage message = new SendMessage();
             message.setChatId(String.valueOf(chatId));
-            message.setText(task.getContent() + "\n\nВведите ответ:");
+            message.setText(prefix + task.getContent() + "\n\nВведите ответ:");
             tryExecute(message);
         }
     }
@@ -773,12 +786,13 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         if (session == null || session.step != TestSessionStep.IN_PROGRESS) return;
 
         Task task = session.tasks.get(session.index);
-        if (userTrainingService.isAnswerCorrect(task, answer)) {
+        boolean isCorrect = userTrainingService.isAnswerCorrect(task, answer);
+        if (isCorrect) {
             session.correct++;
         }
         session.index++;
         if (session.index < session.tasks.size()) {
-            sendTestTask(chatId, session);
+            sendTestTask(chatId, session, isCorrect);
         } else {
             int total = session.tasks.size();
             int wrong = total - session.correct;
@@ -788,7 +802,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             if (wrong > total / 3) {
                 if (session.test.getAdvice() != null) sb.append("\n\n").append(session.test.getAdvice());
             }
-            sendMessage(chatId, sb.toString());
+            String prefix = isCorrect ? "Верно\n" : "Неверно\n";
+            sendMessage(chatId, prefix + sb.toString());
             testSessions.remove(internalUserId);
         }
     }
