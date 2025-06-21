@@ -2,6 +2,7 @@ package com.example.duolingomathbot.repository;
 
 import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.Topic;
+import com.example.duolingomathbot.model.Test;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -25,4 +26,6 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
             "AND uta.nextReviewAtTraining = :trainingCounter " +
             "ORDER BY uta.attemptTimestamp DESC")
     List<Task> findTasksForReviewInTopic(@Param("userId") Long userId, @Param("topic") Topic topic, @Param("trainingCounter") int trainingCounter, Pageable pageable);
+
+    List<Task> findByTestOrderByIdAsc(Test test);
 }

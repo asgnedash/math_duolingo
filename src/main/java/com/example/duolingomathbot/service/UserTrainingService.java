@@ -23,6 +23,7 @@ public class UserTrainingService {
     private final UserRepository userRepository;
     private final TopicRepository topicRepository;
     private final TaskRepository taskRepository;
+    private final TestRepository testRepository;
     private final UserTopicProgressRepository userTopicProgressRepository;
     private final UserTaskAttemptRepository userTaskAttemptRepository;
     private final Random random = new Random();
@@ -32,11 +33,13 @@ public class UserTrainingService {
     public UserTrainingService(UserRepository userRepository,
                                TopicRepository topicRepository,
                                TaskRepository taskRepository,
+                               TestRepository testRepository,
                                UserTopicProgressRepository userTopicProgressRepository,
                                UserTaskAttemptRepository userTaskAttemptRepository) {
         this.userRepository = userRepository;
         this.topicRepository = topicRepository;
         this.taskRepository = taskRepository;
+        this.testRepository = testRepository;
         this.userTopicProgressRepository = userTopicProgressRepository;
         this.userTaskAttemptRepository = userTaskAttemptRepository;
     }
@@ -57,6 +60,7 @@ public class UserTrainingService {
         // 1. Проверяем темы на интервальном повторении (SRS)
         List<UserTopicProgress> dueSrsProgresses = userTopicProgressRepository
                 .findByUserAndCompletedTrueAndNextTrainingNumberLessThanEqual(user, currentTrainingCounter);
+        dueSrsProgresses.removeIf(p -> p.getTopic().getType() == TopicType.TEST);
 
         if (!dueSrsProgresses.isEmpty()) {
             dueSrsProgresses.sort((p1, p2) -> {
@@ -86,6 +90,7 @@ public class UserTrainingService {
         // 2. Проверяем темы, которые ещё не пройдены
         List<UserTopicProgress> learningProgresses = userTopicProgressRepository
                 .findByUserAndCompletedFalseOrderByCorrectlySolvedCountAsc(user);
+        learningProgresses.removeIf(p -> p.getTopic().getType() == TopicType.TEST);
 
         for (UserTopicProgress learningProgress : learningProgresses) {
             Optional<Task> task = findTaskInLearningTopic(user, learningProgress.getTopic());
@@ -96,6 +101,7 @@ public class UserTrainingService {
         }
 
         List<Topic> unstartedTopics = topicRepository.findUnstartedTopicsForUser(user.getId());
+        unstartedTopics.removeIf(t -> t.getType() == TopicType.TEST);
         if (!unstartedTopics.isEmpty()) {
             Topic newTopic = unstartedTopics.get(0); // predetermined order
             UserTopicProgress newProgress = new UserTopicProgress(user, newTopic);
@@ -269,5 +275,45 @@ public class UserTrainingService {
     @Transactional(readOnly = true)
     public List<Topic> getUnorderedTopics(TopicType type) {
         return topicRepository.findByTypeAndOrderIndexIsNullOrderByNameAsc(type);
+    }
+
+    @Transactional
+    public Test createTest() {
+        Integer max = testRepository.findMaxStartId();
+        int next = (max == null ? 10000 : Math.max(10000, max + 1));
+        Test test = new Test();
+        test.setStartId(next);
+        return testRepository.save(test);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Test> getTestByStartId(int startId) {
+        return testRepository.findByStartId(startId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Task> getTasksForTest(Test test) {
+        return taskRepository.findByTestOrderByIdAsc(test);
+    }
+
+    @Transactional
+    public Task addTaskToTest(Test test, String content, String answer) {
+        Topic testTopic = topicRepository.findByNameAndType("test", TopicType.TEST)
+                .orElseGet(() -> topicRepository.save(new Topic("test", TopicType.TEST, 1.0)));
+        Task task = new Task(testTopic, content, answer, 1.0);
+        task.setTest(test);
+        return taskRepository.save(task);
+    }
+
+    @Transactional
+    public void updateTestAdvice(Test test, String advice) {
+        test.setAdvice(advice);
+        testRepository.save(test);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isAnswerCorrect(Task task, String userAnswer) {
+        if (task.getAnswer() == null) return false;
+        return task.getAnswer().trim().equalsIgnoreCase(userAnswer.trim());
     }
 }
