@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -98,8 +97,7 @@ public class UserTrainingService {
 
         List<Topic> unstartedTopics = topicRepository.findUnstartedTopicsForUser(user.getId());
         if (!unstartedTopics.isEmpty()) {
-            Collections.shuffle(unstartedTopics);
-            Topic newTopic = unstartedTopics.get(0);
+            Topic newTopic = unstartedTopics.get(0); // predetermined order
             UserTopicProgress newProgress = new UserTopicProgress(user, newTopic);
             userTopicProgressRepository.save(newProgress);
 
