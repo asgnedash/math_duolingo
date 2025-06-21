@@ -24,11 +24,18 @@ public class BotConfig {
     @Value("${telegram.bot.token}")
     private String botToken;
 
+    @Value("${telegram.admin-chat-id}")
+    private long adminChatId;
+
     public String getBotUsername() {
         return botUsername;
     }
 
     public String getBotToken() {
         return botToken;
+    }
+
+    public long getAdminChatId() {
+        return adminChatId;
     }
 }
