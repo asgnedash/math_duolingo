@@ -15,6 +15,10 @@ public class Task {
     @JoinColumn(name = "topic_id", nullable = false)
     private Topic topic;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "test_id")
+    private Test test;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
@@ -49,6 +53,14 @@ public class Task {
 
     public void setTopic(Topic topic) {
         this.topic = topic;
+    }
+
+    public Test getTest() {
+        return test;
+    }
+
+    public void setTest(Test test) {
+        this.test = test;
     }
 
     public String getContent() {
