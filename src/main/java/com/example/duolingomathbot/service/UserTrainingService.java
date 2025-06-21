@@ -130,6 +130,28 @@ public class UserTrainingService {
         return Optional.of(tasks.get(random.nextInt(tasks.size())));
     }
 
+    /**
+     * Processes a textual answer from a user. The provided answer is compared
+     * with the correct answer stored for the task and then delegated to the
+     * main processing routine.
+     *
+     * @param userId     id of the user
+     * @param taskId     id of the task
+     * @param userAnswer answer typed by user
+     * @return {@code true} if the answer is correct
+     */
+    @Transactional
+    public boolean processAnswer(Long userId, Long taskId, String userAnswer) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("Task not found with ID: " + taskId));
+        boolean isCorrect = false;
+        if (task.getAnswer() != null) {
+            isCorrect = task.getAnswer().trim().equalsIgnoreCase(userAnswer.trim());
+        }
+        processAnswer(userId, taskId, isCorrect);
+        return isCorrect;
+    }
+
 
     @Transactional
     public void processAnswer(Long userId, Long taskId, boolean isCorrect) {
