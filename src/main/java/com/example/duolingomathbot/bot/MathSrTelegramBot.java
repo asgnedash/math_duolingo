@@ -41,7 +41,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     // Это для оптимизации, чтобы не дергать БД каждый раз за internalUserId
     private final ConcurrentHashMap<Long, Long> telegramToInternalUserIdMap = new ConcurrentHashMap<>();
 
-    private static final long ADMIN_CHAT_ID = 262398881L;
+    private final long adminChatId;
 
     private enum AddTaskStep {
         WAITING_FOR_PHOTO,
@@ -63,6 +63,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         super(botConfig.getBotToken());
         this.botConfig = botConfig;
         this.userTrainingService = userTrainingService;
+        this.adminChatId = botConfig.getAdminChatId();
     }
 
     @Override
@@ -171,7 +172,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/addtask".equals(messageText)) {
-            if (chatId != ADMIN_CHAT_ID) {
+            if (chatId != adminChatId) {
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
