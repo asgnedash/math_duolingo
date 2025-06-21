@@ -237,8 +237,8 @@ public class UserTrainingService {
 
     @Transactional
     public Topic createTopic(String name, TopicType type) {
-        if (topicRepository.findByName(name).isPresent()) {
-            throw new IllegalArgumentException("Topic already exists: " + name);
+        if (topicRepository.findByNameAndType(name, type).isPresent()) {
+            throw new IllegalArgumentException("Topic already exists: " + name + " " + type);
         }
         Topic topic = new Topic();
         topic.setName(name);
@@ -248,9 +248,9 @@ public class UserTrainingService {
     }
 
     @Transactional
-    public void updateTopicOrder(List<Long> orderedIds) {
-        List<Topic> all = topicRepository.findAll();
-        for (Topic t : all) {
+    public void updateTopicOrder(List<Long> orderedIds, TopicType type) {
+        List<Topic> topicsOfType = topicRepository.findByType(type);
+        for (Topic t : topicsOfType) {
             int index = orderedIds.indexOf(t.getId());
             if (index >= 0) {
                 t.setOrderIndex(index);
@@ -258,16 +258,16 @@ public class UserTrainingService {
                 t.setOrderIndex(null);
             }
         }
-        topicRepository.saveAll(all);
+        topicRepository.saveAll(topicsOfType);
     }
 
     @Transactional(readOnly = true)
-    public List<Topic> getOrderedTopics() {
-        return topicRepository.findAllByOrderIndexNotNullOrderByOrderIndexAsc();
+    public List<Topic> getOrderedTopics(TopicType type) {
+        return topicRepository.findAllByTypeAndOrderIndexNotNullOrderByOrderIndexAsc(type);
     }
 
     @Transactional(readOnly = true)
-    public List<Topic> getUnorderedTopics() {
-        return topicRepository.findByOrderIndexIsNullOrderByNameAsc();
+    public List<Topic> getUnorderedTopics(TopicType type) {
+        return topicRepository.findByTypeAndOrderIndexIsNullOrderByNameAsc(type);
     }
 }

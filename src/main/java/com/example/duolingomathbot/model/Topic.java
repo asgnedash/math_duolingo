@@ -11,16 +11,15 @@ public class Topic {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String name;
 
     @Column(name = "max_difficulty_in_topic", nullable = false)
     private double maxDifficultyInTopic = 1.0;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "varchar(8) default 'OBA'")
-
-    private TopicType type = TopicType.OBA;
+    @Column(nullable = false)
+    private TopicType type;
 
     @Column(name = "order_index")
     private Integer orderIndex;
