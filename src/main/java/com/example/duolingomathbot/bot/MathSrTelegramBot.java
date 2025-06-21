@@ -4,6 +4,7 @@ import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.service.UserTrainingService;
 import com.example.duolingomathbot.bot.BotConfig;
+import com.example.duolingomathbot.config.SrsConfig;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Telegram bot implementation for delivering math training tasks.
+ */
+
 @Component
 public class MathSrTelegramBot extends TelegramLongPollingBot {
 
@@ -40,6 +45,20 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     // Храним внутренний ID пользователя (telegramUserId -> internalUserId)
     // Это для оптимизации, чтобы не дергать БД каждый раз за internalUserId
     private final ConcurrentHashMap<Long, Long> telegramToInternalUserIdMap = new ConcurrentHashMap<>();
+
+    /**
+     * Tracks short training sessions for each user. A session limits how many
+     * tasks are served consecutively before the user must explicitly request to
+     * continue with /train.
+     */
+    private static class TrainingSession {
+        int served = 0;
+        int limit = 7; // start with easy limit
+        boolean hasMedium = false;
+        boolean hasHard = false;
+    }
+
+    private final ConcurrentHashMap<Long, TrainingSession> userSessions = new ConcurrentHashMap<>();
 
     private static final long ADMIN_CHAT_ID = 262398881L;
 
@@ -185,7 +204,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         if ("/start".equals(messageText)) {
             sendMessage(chatId, "Добро пожаловать! Используйте /train для получения задачи.");
         } else if ("/train".equals(messageText) || "задача".equalsIgnoreCase(messageText) || "next".equalsIgnoreCase(messageText)) {
-            sendNextTask(chatId, internalUserId);
+            sendNextTask(chatId, internalUserId, true);
         } else if ("/help".equals(messageText)) {
             sendMessage(chatId, "Этот бот поможет тебе подготовиться к экзаменам по математике с помощью интервального повторения.\n\n" +
                     "Просто отвечай 'Правильно' или 'Неправильно' на предложенные задачи.\n" +
@@ -323,7 +342,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
             String feedback = isCorrect ? "Отлично! Правильно! ✅" : "Неверно. ❌";
             sendMessage(chatId, feedback);
-            sendNextTask(chatId, internalUserId); // Сразу следующую задачу
+            sendNextTask(chatId, internalUserId, false); // Сразу следующую задачу
         }
     }
 
@@ -339,14 +358,35 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
         String feedback = isCorrect ? "Отлично! Правильно! ✅" : "Неверно. ❌";
         sendMessage(chatId, feedback);
-        sendNextTask(chatId, internalUserId);
+        sendNextTask(chatId, internalUserId, false);
     }
 
-    private void sendNextTask(long chatId, Long internalUserId) {
+    private void sendNextTask(long chatId, Long internalUserId, boolean userInitiated) {
+        TrainingSession session = userSessions.get(internalUserId);
+        if (session == null || userInitiated) {
+            session = new TrainingSession();
+            userSessions.put(internalUserId, session);
+        } else if (session.served >= session.limit) {
+            userSessions.remove(internalUserId);
+            userCurrentTaskIdMap.remove(internalUserId);
+            sendMessage(chatId, "На сегодня достаточно. Чтобы продолжить, отправь /train.");
+            return;
+        }
+
         Optional<Task> optionalTask = userTrainingService.getNextTaskForUser(internalUserId);
         if (optionalTask.isPresent()) {
             Task task = optionalTask.get();
             userCurrentTaskIdMap.put(internalUserId, task.getId());
+
+            double ratio = task.getDifficulty() / Math.max(1.0, task.getTopic().getMaxDifficultyInTopic());
+            if (ratio >= SrsConfig.HARD_TASK_DIFFICULTY_THRESHOLD_FACTOR) {
+                session.hasHard = true;
+                session.limit = 5;
+            } else if (ratio >= SrsConfig.MEDIUM_TASK_DIFFICULTY_THRESHOLD_FACTOR && !session.hasHard) {
+                session.hasMedium = true;
+                session.limit = Math.min(session.limit, 6);
+            }
+            session.served++;
 
             if (task.getContent() != null && task.getContent().startsWith("FILE_ID:")) {
                 SendPhoto photo = new SendPhoto();
@@ -362,6 +402,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             }
         } else {
             userCurrentTaskIdMap.remove(internalUserId);
+            userSessions.remove(internalUserId);
             sendMessage(chatId, "На сегодня задач больше нет или не удалось подобрать подходящую. Заглядывай позже!");
         }
     }

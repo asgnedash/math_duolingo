@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TopicRepository extends JpaRepository<Topic, Long> {
-    @Query("SELECT t FROM Topic t WHERE t.id NOT IN (SELECT utp.topic.id FROM UserTopicProgress utp WHERE utp.user.id = :userId)")
+    @Query("SELECT t FROM Topic t WHERE t.id NOT IN (SELECT utp.topic.id FROM UserTopicProgress utp WHERE utp.user.id = :userId) ORDER BY t.id")
     List<Topic> findUnstartedTopicsForUser(@Param("userId") Long userId);
 
     Optional<Topic> findByName(String name);
