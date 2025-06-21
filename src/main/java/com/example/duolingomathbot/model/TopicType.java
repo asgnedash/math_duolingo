@@ -2,8 +2,7 @@ package com.example.duolingomathbot.model;
 
 public enum TopicType {
     OGE("ОГЭ"),
-    EGE("ЕГЭ"),
-    OBA("ОБА");
+    EGE("ЕГЭ");
 
     private final String displayName;
 

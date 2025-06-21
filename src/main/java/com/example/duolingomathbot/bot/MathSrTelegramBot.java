@@ -16,7 +16,6 @@ import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -76,6 +75,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         CHOOSING_ACTION,
         ADD_WAITING_NAME,
         ADD_WAITING_TYPE,
+        ORDER_CHOOSE_TYPE,
         ORDER_WAITING_LIST
     }
 
@@ -89,6 +89,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     private static class ManageState {
         ManageTopicsStep step;
         String newTopicName;
+        TopicType orderType;
     }
 
     private final ConcurrentHashMap<Long, PendingTaskData> pendingTasks = new ConcurrentHashMap<>();
@@ -304,6 +305,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 state.step = ManageTopicsStep.ADD_WAITING_TYPE;
                 sendTopicTypePrompt(chatId);
             }
+            case ORDER_CHOOSE_TYPE -> sendMessage(chatId, "Выберите тип с помощью кнопок.");
             case ORDER_WAITING_LIST -> {
                 String[] parts = text.trim().split("\\s+");
                 try {
@@ -311,7 +313,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                     for (String p : parts) {
                         if (!p.isBlank()) ids.add(Long.parseLong(p));
                     }
-                    userTrainingService.updateTopicOrder(ids);
+                    userTrainingService.updateTopicOrder(ids, state.orderType);
                     sendMessage(chatId, "Очередность обновлена");
                 } catch (Exception e) {
                     sendMessage(chatId, "Ошибка обработки списка");
@@ -339,6 +341,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         long chatId = update.getCallbackQuery().getMessage().getChatId();
         org.telegram.telegrambots.meta.api.objects.User telegramUserObj = update.getCallbackQuery().getFrom();
         int messageId = update.getCallbackQuery().getMessage().getMessageId();
+        deleteMessage(chatId, messageId);
 
         User user = getPersistedUser(telegramUserObj);
         Long internalUserId = user.getId();
@@ -347,13 +350,6 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             logger.error("CRITICAL: Could not obtain internal user ID for Telegram user: {} ({}) during callback. Aborting callback processing.",
                     telegramUserObj.getId(), user.getUsername());
             sendMessage(chatId, "Произошла внутренняя ошибка при обработке вашего ответа. Пожалуйста, попробуйте команду /start.");
-            // Попытка убрать кнопки
-            EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                    .chatId(String.valueOf(chatId))
-                    .messageId(messageId)
-                    .replyMarkup(null)
-                    .build();
-            tryExecute(editMarkup);
             return;
         }
 
@@ -361,12 +357,6 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             PendingTaskData data = pendingTasks.get(chatId);
             if (data != null && data.step == AddTaskStep.WAITING_FOR_TOPIC) {
                 data.step = AddTaskStep.WAITING_FOR_NEW_TOPIC_NAME;
-                EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                        .chatId(String.valueOf(chatId))
-                        .messageId(messageId)
-                        .replyMarkup(null)
-                        .build();
-                tryExecute(editMarkup);
                 sendMessage(chatId, "Введите название новой темы:");
             }
             return;
@@ -376,12 +366,6 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             ManageState state = manageStates.get(chatId);
             if (state != null && state.step == ManageTopicsStep.CHOOSING_ACTION) {
                 state.step = ManageTopicsStep.ADD_WAITING_NAME;
-                EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                        .chatId(String.valueOf(chatId))
-                        .messageId(messageId)
-                        .replyMarkup(null)
-                        .build();
-                tryExecute(editMarkup);
                 sendMessage(chatId, "Введите название темы:");
             }
             return;
@@ -390,14 +374,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         if ("manage_order".equals(callbackData)) {
             ManageState state = manageStates.get(chatId);
             if (state != null && state.step == ManageTopicsStep.CHOOSING_ACTION) {
-                state.step = ManageTopicsStep.ORDER_WAITING_LIST;
-                EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                        .chatId(String.valueOf(chatId))
-                        .messageId(messageId)
-                        .replyMarkup(null)
-                        .build();
-                tryExecute(editMarkup);
-                sendCurrentOrder(chatId);
+                state.step = ManageTopicsStep.ORDER_CHOOSE_TYPE;
+                sendOrderTypePrompt(chatId);
             }
             return;
         }
@@ -407,9 +385,16 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             PendingTaskData taskData = pendingTasks.get(chatId);
             if (taskData != null && taskData.step == AddTaskStep.WAITING_FOR_NEW_TOPIC_TYPE) {
                 try {
-                    TopicType type = TopicType.valueOf(typeStr);
-                    long newTopicId = userTrainingService.createTopic(taskData.newTopicName, type).getId();
-                    userTrainingService.addTask(newTopicId, "FILE_ID:" + taskData.fileId, taskData.answer);
+                    if ("BOTH".equals(typeStr)) {
+                        Topic oge = userTrainingService.createTopic(taskData.newTopicName, TopicType.OGE);
+                        userTrainingService.addTask(oge.getId(), "FILE_ID:" + taskData.fileId, taskData.answer);
+                        Topic ege = userTrainingService.createTopic(taskData.newTopicName, TopicType.EGE);
+                        userTrainingService.addTask(ege.getId(), "FILE_ID:" + taskData.fileId, taskData.answer);
+                    } else {
+                        TopicType type = TopicType.valueOf(typeStr);
+                        long newTopicId = userTrainingService.createTopic(taskData.newTopicName, type).getId();
+                        userTrainingService.addTask(newTopicId, "FILE_ID:" + taskData.fileId, taskData.answer);
+                    }
                     sendMessage(chatId, "Новая тема создана и задача добавлена");
                 } catch (Exception e) {
                     logger.error("Error creating topic or saving task", e);
@@ -421,8 +406,13 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 ManageState state = manageStates.get(chatId);
                 if (state != null && state.step == ManageTopicsStep.ADD_WAITING_TYPE) {
                     try {
-                        TopicType type = TopicType.valueOf(typeStr);
-                        userTrainingService.createTopic(state.newTopicName, type);
+                        if ("BOTH".equals(typeStr)) {
+                            userTrainingService.createTopic(state.newTopicName, TopicType.OGE);
+                            userTrainingService.createTopic(state.newTopicName, TopicType.EGE);
+                        } else {
+                            TopicType type = TopicType.valueOf(typeStr);
+                            userTrainingService.createTopic(state.newTopicName, type);
+                        }
                         sendMessage(chatId, "Тема успешно создана");
                     } catch (Exception e) {
                         logger.error("Error creating topic", e);
@@ -432,13 +422,17 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                     }
                 }
             }
+            return;
+        }
 
-            EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                    .chatId(String.valueOf(chatId))
-                    .messageId(messageId)
-                    .replyMarkup(null)
-                    .build();
-            tryExecute(editMarkup);
+        if (callbackData.startsWith("order_type_")) {
+            String typeStr = callbackData.substring("order_type_".length());
+            ManageState state = manageStates.get(chatId);
+            if (state != null && state.step == ManageTopicsStep.ORDER_CHOOSE_TYPE) {
+                state.orderType = TopicType.valueOf(typeStr);
+                state.step = ManageTopicsStep.ORDER_WAITING_LIST;
+                sendCurrentOrder(chatId, state.orderType);
+            }
             return;
         }
 
@@ -446,12 +440,6 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
         if (currentTaskId == null) {
             sendMessage(chatId, "Не удалось определить, на какую задачу вы отвечаете. Попробуйте получить новую задачу: /start");
-            EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                    .chatId(String.valueOf(chatId))
-                    .messageId(messageId)
-                    .replyMarkup(null)
-                    .build();
-            tryExecute(editMarkup);
             return;
         }
 
@@ -460,13 +448,6 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
             userTrainingService.processAnswer(internalUserId, currentTaskId, isCorrect);
             userCurrentTaskIdMap.remove(internalUserId); // Очищаем ID текущей задачи после ответа
-
-            EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
-                    .chatId(String.valueOf(chatId))
-                    .messageId(messageId)
-                    .replyMarkup(null) // Убираем клавиатуру
-                    .build();
-            tryExecute(editMarkup);
 
             String feedback = isCorrect ? "Отлично! Правильно! ✅" : "Неверно. ❌";
             sendMessage(chatId, feedback);
@@ -565,7 +546,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         List<InlineKeyboardButton> row = new ArrayList<>();
         row.add(InlineKeyboardButton.builder().text("ОГЭ").callbackData("newtopic_type_OGE").build());
         row.add(InlineKeyboardButton.builder().text("ЕГЭ").callbackData("newtopic_type_EGE").build());
-        row.add(InlineKeyboardButton.builder().text("ОБА").callbackData("newtopic_type_OBA").build());
+        row.add(InlineKeyboardButton.builder().text("ОБА").callbackData("newtopic_type_BOTH").build());
         markup.setKeyboard(Collections.singletonList(row));
 
         SendMessage msg = new SendMessage();
@@ -597,15 +578,29 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         tryExecute(msg);
     }
 
-    private void sendCurrentOrder(long chatId) {
+    private void sendOrderTypePrompt(long chatId) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<InlineKeyboardButton> row = new ArrayList<>();
+        row.add(InlineKeyboardButton.builder().text("ОГЭ").callbackData("order_type_OGE").build());
+        row.add(InlineKeyboardButton.builder().text("ЕГЭ").callbackData("order_type_EGE").build());
+        markup.setKeyboard(Collections.singletonList(row));
+
+        SendMessage msg = new SendMessage();
+        msg.setChatId(String.valueOf(chatId));
+        msg.setText("Для какого типа настроить очередность?");
+        msg.setReplyMarkup(markup);
+        tryExecute(msg);
+    }
+
+    private void sendCurrentOrder(long chatId, TopicType type) {
         StringBuilder sb = new StringBuilder("Текущая очередность:\n");
-        List<Topic> ordered = userTrainingService.getOrderedTopics();
+        List<Topic> ordered = userTrainingService.getOrderedTopics(type);
         for (int i = 0; i < ordered.size(); i++) {
             Topic t = ordered.get(i);
             sb.append(i + 1).append(". ").append(t.getId()).append(" - ")
                     .append(t.getName()).append(" (" + t.getType().getDisplayName() + ")\n");
         }
-        List<Topic> others = userTrainingService.getUnorderedTopics();
+        List<Topic> others = userTrainingService.getUnorderedTopics(type);
         if (!others.isEmpty()) {
             sb.append("\nНе в очереди:\n");
             others.forEach(t -> sb.append(t.getId()).append(" - ").append(t.getName()).append("\n"));
@@ -634,5 +629,13 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             logger.error("Telegram API execution error for SendPhoto: {}", e.getMessage(), e);
         }
+    }
+
+    private void deleteMessage(long chatId, int messageId) {
+        org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage dm =
+                new org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage();
+        dm.setChatId(String.valueOf(chatId));
+        dm.setMessageId(messageId);
+        tryExecute(dm);
     }
 }
