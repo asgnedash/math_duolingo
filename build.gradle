@@ -25,7 +25,9 @@ dependencies {
 
         implementation 'org.telegram:telegrambots-spring-boot-starter:6.9.7.1'
 
-        implementation 'org.flywaydb:flyway-core:9.22.0'
+        // Use Flyway with explicit PostgreSQL support
+        implementation 'org.flywaydb:flyway-core:11.8.1'
+        implementation 'org.flywaydb:flyway-database-postgresql:11.8.1'
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
