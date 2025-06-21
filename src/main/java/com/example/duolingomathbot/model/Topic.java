@@ -18,7 +18,8 @@ public class Topic {
     private double maxDifficultyInTopic = 1.0;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(8) default 'OBA'")
+
     private TopicType type = TopicType.OBA;
 
     @Column(name = "order_index")
