@@ -383,7 +383,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         message.setReplyMarkup(markup);
         tryExecute(message);
     }
-
+  
     private void tryExecute(org.telegram.telegrambots.meta.api.methods.BotApiMethod<?> method) {
         try {
             execute(method);
