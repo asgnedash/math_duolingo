@@ -192,6 +192,11 @@ public class UserTrainingService {
         return topicRepository.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public Optional<Topic> getTopic(Long id) {
+        return topicRepository.findById(id);
+    }
+
     @Transactional
     public Task addTask(Long topicId, String content, String answer) {
         Topic topic = topicRepository.findById(topicId)
