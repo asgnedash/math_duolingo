@@ -126,4 +126,17 @@ class UserTrainingServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.addTask(2L, "c", "a"));
     }
+
+    @Test
+    void createTestGeneratesStartIdInRange() {
+        when(testRepository.existsByStartId(anyInt())).thenReturn(false);
+        when(testRepository.save(any(com.example.duolingomathbot.model.Test.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        com.example.duolingomathbot.model.Test test = service.createTest();
+
+        assertTrue(test.getStartId() >= 10000 && test.getStartId() <= 99999);
+        verify(testRepository).existsByStartId(test.getStartId());
+        verify(testRepository).save(any(com.example.duolingomathbot.model.Test.class));
+    }
 }

@@ -8,6 +8,7 @@ import java.util.Optional;
 
 public interface TestRepository extends JpaRepository<Test, Long> {
     Optional<Test> findByStartId(int startId);
+    boolean existsByStartId(int startId);
 
     @Query("select max(t.startId) from Test t")
     Integer findMaxStartId();

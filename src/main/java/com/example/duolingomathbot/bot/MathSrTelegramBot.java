@@ -383,12 +383,28 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             if (parts.length > 1) {
                 try {
                     int startId = Integer.parseInt(parts[1]);
-                    Optional<Magnet> opt = magnetService.getByStartId(startId);
-                    if (opt.isPresent()) {
-                        Magnet m = opt.get();
+                    Optional<Magnet> magnetOpt = magnetService.getByStartId(startId);
+                    if (magnetOpt.isPresent()) {
+                        Magnet m = magnetOpt.get();
                         sendDocument(chatId, m.getFileId(), m.getMessage());
                     } else {
-                        sendMessage(chatId, "Ссылка недействительна");
+                        Optional<Test> testOpt = userTrainingService.getTestByStartId(startId);
+                        if (testOpt.isPresent()) {
+                            TestSession session = new TestSession();
+                            session.step = TestSessionStep.IN_PROGRESS;
+                            session.test = testOpt.get();
+                            session.tasks = userTrainingService.getTasksForTest(session.test);
+                            if (session.tasks.isEmpty()) {
+                                sendMessage(chatId, "Тест пуст.");
+                            } else {
+                                session.index = 0;
+                                session.correct = 0;
+                                testSessions.put(internalUserId, session);
+                                sendTestTask(chatId, session);
+                            }
+                        } else {
+                            sendMessage(chatId, "Ссылка недействительна");
+                        }
                     }
                 } catch (NumberFormatException e) {
                     sendMessage(chatId, "Неверный параметр ссылки");
@@ -517,7 +533,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 Test t = userTrainingService.getTestByStartId(state.startId).orElseThrow();
                 userTrainingService.updateTestAdvice(t, text);
                 makeTestStates.remove(chatId);
-                sendMessage(chatId, "Тест создан. Номер: " + state.startId);
+                String link = "https://t.me/" + getBotUsername() + "?start=" + state.startId;
+                sendMessage(chatId, "Тест создан. Номер: " + state.startId + "\n" + link);
             }
             default -> sendMessage(chatId, "Отправьте изображение задачи");
         }
