@@ -3,6 +3,7 @@ package com.example.duolingomathbot.bot;
 import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.service.UserTrainingService;
+import com.example.duolingomathbot.bot.BotConfig;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
@@ -38,6 +41,23 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     // Это для оптимизации, чтобы не дергать БД каждый раз за internalUserId
     private final ConcurrentHashMap<Long, Long> telegramToInternalUserIdMap = new ConcurrentHashMap<>();
 
+    private static final long ADMIN_CHAT_ID = 262398881L;
+
+    private enum AddTaskStep {
+        WAITING_FOR_PHOTO,
+        WAITING_FOR_ANSWER,
+        WAITING_FOR_TOPIC,
+        WAITING_FOR_NEW_TOPIC_NAME
+    }
+
+    private static class PendingTaskData {
+        AddTaskStep step;
+        String fileId;
+        String answer;
+    }
+
+    private final ConcurrentHashMap<Long, PendingTaskData> pendingTasks = new ConcurrentHashMap<>();
+
 
     public MathSrTelegramBot(BotConfig botConfig, UserTrainingService userTrainingService) {
         super(botConfig.getBotToken());
@@ -64,8 +84,10 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         // Регистрация команд бота
         try {
             List<BotCommand> commands = new ArrayList<>();
-            commands.add(new BotCommand("/start", "Начать тренировку / Следующая задача"));
+            commands.add(new BotCommand("/start", "Запуск бота"));
+            commands.add(new BotCommand("/train", "Следующая задача"));
             commands.add(new BotCommand("/help", "Помощь"));
+            commands.add(new BotCommand("/addtask", "Добавить задачу (админ)"));
 
             SetMyCommands setMyCommands = new SetMyCommands(); // Создаем объект
             setMyCommands.setCommands(commands);               // Устанавливаем команды
@@ -73,7 +95,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /help");
+            logger.info("Bot commands registered: /start, /train, /help, /addtask");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -83,6 +105,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
             handleTextMessage(update);
+        } else if (update.hasMessage() && update.getMessage().hasPhoto()) {
+            handlePhotoMessage(update);
         } else if (update.hasCallbackQuery()) {
             handleCallbackQuery(update);
         }
@@ -141,15 +165,94 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
-        if ("/start".equals(messageText) || "задача".equalsIgnoreCase(messageText) || "next".equalsIgnoreCase(messageText)) {
+        if (pendingTasks.containsKey(chatId)) {
+            processAddTaskText(chatId, messageText);
+            return;
+        }
+
+        if ("/addtask".equals(messageText)) {
+            if (chatId != ADMIN_CHAT_ID) {
+                sendMessage(chatId, "Команда доступна только администратору");
+                return;
+            }
+            PendingTaskData data = new PendingTaskData();
+            data.step = AddTaskStep.WAITING_FOR_PHOTO;
+            pendingTasks.put(chatId, data);
+            sendMessage(chatId, "Пришлите изображение задачи");
+            return;
+        }
+
+        if ("/start".equals(messageText)) {
+            sendMessage(chatId, "Добро пожаловать! Используйте /train для получения задачи.");
+        } else if ("/train".equals(messageText) || "задача".equalsIgnoreCase(messageText) || "next".equalsIgnoreCase(messageText)) {
             sendNextTask(chatId, internalUserId);
         } else if ("/help".equals(messageText)) {
             sendMessage(chatId, "Этот бот поможет тебе подготовиться к экзаменам по математике с помощью интервального повторения.\n\n" +
                     "Просто отвечай 'Правильно' или 'Неправильно' на предложенные задачи.\n" +
-                    "Команда /start или сообщение 'задача' - получить новую задачу.");
+                    "Команда /train или сообщение 'задача' - получить новую задачу.");
         } else {
-            sendMessage(chatId, "Привет, " + user.getUsername() + "! Используй команду /start или 'задача', чтобы получить задание. /help для помощи.");
+            sendMessage(chatId, "Привет, " + user.getUsername() + "! Используй команду /train или 'задача', чтобы получить задание. /help для помощи.");
         }
+    }
+
+    private void processAddTaskText(long chatId, String text) {
+        PendingTaskData data = pendingTasks.get(chatId);
+        if (data == null) return;
+
+        switch (data.step) {
+            case WAITING_FOR_ANSWER -> {
+                data.answer = text;
+                data.step = AddTaskStep.WAITING_FOR_TOPIC;
+                sendTopicsPrompt(chatId);
+            }
+            case WAITING_FOR_TOPIC -> {
+                String trimmed = text.trim();
+                try {
+                    long topicId = Long.parseLong(trimmed);
+                    if (userTrainingService.getTopic(topicId).isEmpty()) {
+                        sendMessage(chatId, "Такого id нет в списке, попробуйте еще раз.");
+                        sendTopicsPrompt(chatId);
+                        return;
+                    }
+                    userTrainingService.addTask(topicId, "FILE_ID:" + data.fileId, data.answer);
+                    sendMessage(chatId, "Задача успешно добавлена");
+                    pendingTasks.remove(chatId);
+                } catch (NumberFormatException e) {
+                    sendMessage(chatId, "Некорректный формат id. Попробуйте еще раз.");
+                    sendTopicsPrompt(chatId);
+                } catch (Exception e) {
+                    logger.error("Error saving new task", e);
+                    sendMessage(chatId, "Произошла ошибка при сохранении задачи");
+                    pendingTasks.remove(chatId);
+                }
+            }
+            case WAITING_FOR_NEW_TOPIC_NAME -> {
+                String name = text.trim();
+                try {
+                    long newTopicId = userTrainingService.createTopic(name).getId();
+                    userTrainingService.addTask(newTopicId, "FILE_ID:" + data.fileId, data.answer);
+                    sendMessage(chatId, "Новая тема создана и задача добавлена");
+                } catch (Exception e) {
+                    logger.error("Error creating topic or saving task", e);
+                    sendMessage(chatId, "Ошибка при создании темы или сохранении задачи");
+                } finally {
+                    pendingTasks.remove(chatId);
+                }
+            }
+            default -> sendMessage(chatId, "Ожидалось изображение задачи");
+        }
+    }
+
+    private void handlePhotoMessage(Update update) {
+        long chatId = update.getMessage().getChatId();
+        PendingTaskData data = pendingTasks.get(chatId);
+        if (data == null || data.step != AddTaskStep.WAITING_FOR_PHOTO) {
+            return;
+        }
+        String fileId = update.getMessage().getPhoto().get(update.getMessage().getPhoto().size() - 1).getFileId();
+        data.fileId = fileId;
+        data.step = AddTaskStep.WAITING_FOR_ANSWER;
+        sendMessage(chatId, "Введите правильный ответ на задачу");
     }
 
     private void handleCallbackQuery(Update update) {
@@ -172,6 +275,21 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                     .replyMarkup(null)
                     .build();
             tryExecute(editMarkup);
+            return;
+        }
+
+        if ("addtask_new_topic".equals(callbackData)) {
+            PendingTaskData data = pendingTasks.get(chatId);
+            if (data != null && data.step == AddTaskStep.WAITING_FOR_TOPIC) {
+                data.step = AddTaskStep.WAITING_FOR_NEW_TOPIC_NAME;
+                EditMessageReplyMarkup editMarkup = EditMessageReplyMarkup.builder()
+                        .chatId(String.valueOf(chatId))
+                        .messageId(messageId)
+                        .replyMarkup(null)
+                        .build();
+                tryExecute(editMarkup);
+                sendMessage(chatId, "Введите название новой темы:");
+            }
             return;
         }
 
@@ -213,13 +331,6 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             Task task = optionalTask.get();
             userCurrentTaskIdMap.put(internalUserId, task.getId());
 
-            SendMessage message = new SendMessage();
-            message.setChatId(String.valueOf(chatId));
-            message.setText("Тема: " + task.getTopic().getName() + "\n\n" + task.getContent() +
-                    "\n\nСложность: " + String.format("%.2f",task.getDifficulty()) +
-                    " (max в теме: " + String.format("%.2f",task.getTopic().getMaxDifficultyInTopic()) +")");
-
-
             InlineKeyboardMarkup inlineKeyboardMarkup = new InlineKeyboardMarkup();
             List<InlineKeyboardButton> rowInline = new ArrayList<>();
             InlineKeyboardButton correctButton = InlineKeyboardButton.builder().text("✅ Правильно").callbackData("answer_correct").build();
@@ -227,9 +338,21 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             rowInline.add(correctButton);
             rowInline.add(incorrectButton);
             inlineKeyboardMarkup.setKeyboard(Collections.singletonList(rowInline));
-            message.setReplyMarkup(inlineKeyboardMarkup);
 
-            tryExecute(message);
+            if (task.getContent() != null && task.getContent().startsWith("FILE_ID:")) {
+                SendPhoto photo = new SendPhoto();
+                photo.setChatId(String.valueOf(chatId));
+                photo.setPhoto(new InputFile(task.getContent().substring(8)));
+                photo.setCaption("Введите ответ:");
+                photo.setReplyMarkup(inlineKeyboardMarkup);
+                tryExecute(photo);
+            } else {
+                SendMessage message = new SendMessage();
+                message.setChatId(String.valueOf(chatId));
+                message.setText(task.getContent() + "\n\nВведите ответ:");
+                message.setReplyMarkup(inlineKeyboardMarkup);
+                tryExecute(message);
+            }
         } else {
             userCurrentTaskIdMap.remove(internalUserId);
             sendMessage(chatId, "На сегодня задач больше нет или не удалось подобрать подходящую. Заглядывай позже!");
@@ -243,7 +366,25 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         tryExecute(message);
     }
 
-    private <T extends org.telegram.telegrambots.meta.api.methods.BotApiMethod<M>, M extends java.io.Serializable> void tryExecute(T method) {
+    private void sendTopicsPrompt(long chatId) {
+        StringBuilder sb = new StringBuilder("Доступные темы:\n");
+        userTrainingService.getAllTopics().forEach(t -> sb.append(t.getId()).append(" - ").append(t.getName()).append("\n"));
+
+        InlineKeyboardButton newTopicButton = InlineKeyboardButton.builder()
+                .text("Новая тема")
+                .callbackData("addtask_new_topic")
+                .build();
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(Collections.singletonList(Collections.singletonList(newTopicButton)));
+
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(sb.toString() + "\nВведите id подходящей темы:");
+        message.setReplyMarkup(markup);
+        tryExecute(message);
+    }
+
+    private void tryExecute(org.telegram.telegrambots.meta.api.methods.BotApiMethod<?> method) {
         try {
             execute(method);
         } catch (TelegramApiException e) {
@@ -251,6 +392,14 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             if (e.getMessage() != null && e.getMessage().contains("bot token is already in use")) {
                 logger.error("CRITICAL: Bot token is already in use. Stop other instances of the bot.");
             }
+        }
+    }
+
+    private void tryExecute(SendPhoto photo) {
+        try {
+            execute(photo);
+        } catch (TelegramApiException e) {
+            logger.error("Telegram API execution error for SendPhoto: {}", e.getMessage(), e);
         }
     }
 }
