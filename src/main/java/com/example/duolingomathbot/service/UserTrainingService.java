@@ -279,10 +279,12 @@ public class UserTrainingService {
 
     @Transactional
     public Test createTest() {
-        Integer max = testRepository.findMaxStartId();
-        int next = (max == null ? 10000 : Math.max(10000, max + 1));
+        int startId;
+        do {
+            startId = 10000 + random.nextInt(90000);
+        } while (testRepository.existsByStartId(startId));
         Test test = new Test();
-        test.setStartId(next);
+        test.setStartId(startId);
         return testRepository.save(test);
     }
 
