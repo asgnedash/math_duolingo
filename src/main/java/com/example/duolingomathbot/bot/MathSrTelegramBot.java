@@ -278,6 +278,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         if (magnetData != null && magnetData.step == AddMagnetStep.WAITING_FOR_FILE) {
             sendMessage(chatId, "Пожалуйста, пришлите PDF файл.");
             return;
+        }
 
          if (makeTestStates.containsKey(chatId)) {
             processMakeTestText(chatId, messageText);
