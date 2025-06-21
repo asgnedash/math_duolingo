@@ -236,13 +236,38 @@ public class UserTrainingService {
     }
 
     @Transactional
-    public Topic createTopic(String name) {
+    public Topic createTopic(String name, TopicType type) {
         if (topicRepository.findByName(name).isPresent()) {
             throw new IllegalArgumentException("Topic already exists: " + name);
         }
         Topic topic = new Topic();
         topic.setName(name);
+        topic.setType(type);
         topic.setMaxDifficultyInTopic(1.0);
         return topicRepository.save(topic);
+    }
+
+    @Transactional
+    public void updateTopicOrder(List<Long> orderedIds) {
+        List<Topic> all = topicRepository.findAll();
+        for (Topic t : all) {
+            int index = orderedIds.indexOf(t.getId());
+            if (index >= 0) {
+                t.setOrderIndex(index);
+            } else {
+                t.setOrderIndex(null);
+            }
+        }
+        topicRepository.saveAll(all);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Topic> getOrderedTopics() {
+        return topicRepository.findAllByOrderIndexNotNullOrderByOrderIndexAsc();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Topic> getUnorderedTopics() {
+        return topicRepository.findByOrderIndexIsNullOrderByNameAsc();
     }
 }
