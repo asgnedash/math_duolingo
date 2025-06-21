@@ -17,11 +17,19 @@ public class Topic {
     @Column(name = "max_difficulty_in_topic", nullable = false)
     private double maxDifficultyInTopic = 1.0;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(8) default 'OBA'")
+    private TopicType type = TopicType.OBA;
+
+    @Column(name = "order_index")
+    private Integer orderIndex;
+
     public Topic() {
     }
 
-    public Topic(String name, double maxDifficultyInTopic) {
+    public Topic(String name, TopicType type, double maxDifficultyInTopic) {
         this.name = name;
+        this.type = type;
         this.maxDifficultyInTopic = maxDifficultyInTopic;
     }
 
@@ -48,6 +56,22 @@ public class Topic {
 
     public void setMaxDifficultyInTopic(double maxDifficultyInTopic) {
         this.maxDifficultyInTopic = maxDifficultyInTopic;
+    }
+
+    public TopicType getType() {
+        return type;
+    }
+
+    public void setType(TopicType type) {
+        this.type = type;
+    }
+
+    public Integer getOrderIndex() {
+        return orderIndex;
+    }
+
+    public void setOrderIndex(Integer orderIndex) {
+        this.orderIndex = orderIndex;
     }
 
     @Override
