@@ -190,6 +190,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             sendMessage(chatId, "Этот бот поможет тебе подготовиться к экзаменам по математике с помощью интервального повторения.\n\n" +
                     "Просто отвечай 'Правильно' или 'Неправильно' на предложенные задачи.\n" +
                     "Команда /train или сообщение 'задача' - получить новую задачу.");
+        } else if (userCurrentTaskIdMap.containsKey(internalUserId)) {
+            processUserAnswer(chatId, internalUserId, messageText);
         } else {
             sendMessage(chatId, "Привет, " + user.getUsername() + "! Используй команду /train или 'задача', чтобы получить задание. /help для помощи.");
         }
@@ -325,32 +327,37 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
     }
 
+    private void processUserAnswer(long chatId, Long internalUserId, String userAnswer) {
+        Long taskId = userCurrentTaskIdMap.get(internalUserId);
+        if (taskId == null) {
+            sendMessage(chatId, "Используйте /train, чтобы получить новую задачу.");
+            return;
+        }
+
+        boolean isCorrect = userTrainingService.processAnswer(internalUserId, taskId, userAnswer);
+        userCurrentTaskIdMap.remove(internalUserId);
+
+        String feedback = isCorrect ? "Отлично! Правильно! ✅" : "Неверно. ❌";
+        sendMessage(chatId, feedback);
+        sendNextTask(chatId, internalUserId);
+    }
+
     private void sendNextTask(long chatId, Long internalUserId) {
         Optional<Task> optionalTask = userTrainingService.getNextTaskForUser(internalUserId);
         if (optionalTask.isPresent()) {
             Task task = optionalTask.get();
             userCurrentTaskIdMap.put(internalUserId, task.getId());
 
-            InlineKeyboardMarkup inlineKeyboardMarkup = new InlineKeyboardMarkup();
-            List<InlineKeyboardButton> rowInline = new ArrayList<>();
-            InlineKeyboardButton correctButton = InlineKeyboardButton.builder().text("✅ Правильно").callbackData("answer_correct").build();
-            InlineKeyboardButton incorrectButton = InlineKeyboardButton.builder().text("❌ Неправильно").callbackData("answer_incorrect").build();
-            rowInline.add(correctButton);
-            rowInline.add(incorrectButton);
-            inlineKeyboardMarkup.setKeyboard(Collections.singletonList(rowInline));
-
             if (task.getContent() != null && task.getContent().startsWith("FILE_ID:")) {
                 SendPhoto photo = new SendPhoto();
                 photo.setChatId(String.valueOf(chatId));
                 photo.setPhoto(new InputFile(task.getContent().substring(8)));
                 photo.setCaption("Введите ответ:");
-                photo.setReplyMarkup(inlineKeyboardMarkup);
                 tryExecute(photo);
             } else {
                 SendMessage message = new SendMessage();
                 message.setChatId(String.valueOf(chatId));
                 message.setText(task.getContent() + "\n\nВведите ответ:");
-                message.setReplyMarkup(inlineKeyboardMarkup);
                 tryExecute(message);
             }
         } else {
