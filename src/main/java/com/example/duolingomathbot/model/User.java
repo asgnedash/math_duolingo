@@ -23,8 +23,8 @@ public class User {
     private int trainingCounter = 0;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "exam_type", nullable = false)
-    private TopicType exam = TopicType.OGE;
+    @Column(name = "exam_type")
+    private TopicType exam;
 
     public User() {
     }
@@ -33,7 +33,7 @@ public class User {
         this.telegramId = telegramId;
         this.username = username;
         this.trainingCounter = 0;
-        this.exam = TopicType.OGE;
+        this.exam = null;
     }
 
     // Getters and Setters

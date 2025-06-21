@@ -51,10 +51,9 @@ public class UserTrainingService {
     }
 
     @Transactional(readOnly = true)
-    public TopicType getUserExam(Long userId) {
+    public Optional<TopicType> getUserExam(Long userId) {
         return userRepository.findById(userId)
-                .map(User::getExam)
-                .orElse(TopicType.OGE);
+                .map(User::getExam);
     }
 
     @Transactional
@@ -72,8 +71,12 @@ public class UserTrainingService {
 
         int currentTrainingCounter = user.getTrainingCounter();
 
-        // 1. Проверяем темы на интервальном повторении (SRS)
         TopicType exam = user.getExam();
+        if (exam == null) {
+            return Optional.empty();
+        }
+
+        // 1. Проверяем темы на интервальном повторении (SRS)
 
         List<UserTopicProgress> dueSrsProgresses = userTopicProgressRepository
                 .findByUserAndCompletedTrueAndNextTrainingNumberLessThanEqual(user, currentTrainingCounter);

@@ -732,6 +732,11 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     }
 
     private void sendNextTask(long chatId, Long internalUserId, boolean userInitiated, Boolean prevCorrect) {
+        if (userTrainingService.getUserExam(internalUserId).isEmpty()) {
+            sendExamPrompt(chatId);
+            return;
+        }
+
         TrainingSession session = userSessions.get(internalUserId);
         if (session == null || userInitiated) {
             session = new TrainingSession();
@@ -971,7 +976,9 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     }
 
     private void sendSettings(long chatId, Long userId) {
-        TopicType exam = userTrainingService.getUserExam(userId);
+        Optional<TopicType> examOpt = userTrainingService.getUserExam(userId);
+        String examName = examOpt.map(TopicType::getDisplayName).orElse("не выбран");
+
         InlineKeyboardButton changeBtn = InlineKeyboardButton.builder()
                 .text("Изменить экзамен")
                 .callbackData("settings_change_exam")
@@ -981,7 +988,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));
-        msg.setText("Вы готовитесь к экзамену: " + exam.getDisplayName() + "\n\nВыберите действие:");
+        msg.setText("Вы готовитесь к экзамену: " + examName + "\n\nВыберите действие:");
         msg.setReplyMarkup(markup);
         tryExecute(msg);
     }
