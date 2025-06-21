@@ -50,6 +50,20 @@ public class UserTrainingService {
                 .orElseGet(() -> userRepository.save(new User(telegramId, username)));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<TopicType> getUserExam(Long userId) {
+        return userRepository.findById(userId)
+                .map(User::getExam);
+    }
+
+    @Transactional
+    public void updateUserExam(Long userId, TopicType exam) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+        user.setExam(exam);
+        userRepository.save(user);
+    }
+
     @Transactional
     public Optional<Task> getNextTaskForUser(Long userId) {
         User user = userRepository.findById(userId)
@@ -57,10 +71,16 @@ public class UserTrainingService {
 
         int currentTrainingCounter = user.getTrainingCounter();
 
+        TopicType exam = user.getExam();
+        if (exam == null) {
+            return Optional.empty();
+        }
+
         // 1. Проверяем темы на интервальном повторении (SRS)
+
         List<UserTopicProgress> dueSrsProgresses = userTopicProgressRepository
                 .findByUserAndCompletedTrueAndNextTrainingNumberLessThanEqual(user, currentTrainingCounter);
-        dueSrsProgresses.removeIf(p -> p.getTopic().getType() == TopicType.TEST);
+        dueSrsProgresses.removeIf(p -> p.getTopic().getType() == TopicType.TEST || p.getTopic().getType() != exam);
 
         if (!dueSrsProgresses.isEmpty()) {
             dueSrsProgresses.sort((p1, p2) -> {
@@ -90,7 +110,7 @@ public class UserTrainingService {
         // 2. Проверяем темы, которые ещё не пройдены
         List<UserTopicProgress> learningProgresses = userTopicProgressRepository
                 .findByUserAndCompletedFalseOrderByCorrectlySolvedCountAsc(user);
-        learningProgresses.removeIf(p -> p.getTopic().getType() == TopicType.TEST);
+        learningProgresses.removeIf(p -> p.getTopic().getType() == TopicType.TEST || p.getTopic().getType() != exam);
 
         for (UserTopicProgress learningProgress : learningProgresses) {
             Optional<Task> task = findTaskInLearningTopic(user, learningProgress.getTopic());
@@ -101,7 +121,7 @@ public class UserTrainingService {
         }
 
         List<Topic> unstartedTopics = topicRepository.findUnstartedTopicsForUser(user.getId());
-        unstartedTopics.removeIf(t -> t.getType() == TopicType.TEST);
+        unstartedTopics.removeIf(t -> t.getType() == TopicType.TEST || t.getType() != exam);
         if (!unstartedTopics.isEmpty()) {
             Topic newTopic = unstartedTopics.get(0); // predetermined order
             UserTopicProgress newProgress = new UserTopicProgress(user, newTopic);
