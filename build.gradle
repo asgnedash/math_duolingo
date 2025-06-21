@@ -1,7 +1,7 @@
 plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.0.0-SNAPSHOT'
-	id 'io.spring.dependency-management' version '1.1.7' // Используйте 1.1.5 или новее для SB 4.x
+	id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'com.example'
@@ -19,19 +19,31 @@ repositories {
 	maven { url = 'https://repo.spring.io/snapshot' }
 }
 
+// Принудительно задаем версии для Flyway, чтобы переопределить BOM Spring Boot
+// Это более современный способ, чем ext['flyway.version'], особенно с plugin'ом dependency-management
+dependencyManagement {
+	dependencies {
+		dependency 'org.flywaydb:flyway-core:11.9.2' // Ваша желаемая версия
+		dependency 'org.flywaydb:flyway-database-postgresql:11.9.2' // Та же версия для модуля PostgreSQL
+		// Вы также можете здесь принудительно задать версию PostgreSQL JDBC драйвера, если нужно
+		// dependency 'org.postgresql:postgresql:42.7.3' // Пример актуальной версии
+	}
+}
+
 dependencies {
-        implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-        implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
 
-        implementation 'org.telegram:telegrambots-spring-boot-starter:6.9.7.1'
+	implementation 'org.telegram:telegrambots-spring-boot-starter:6.9.7.1'
 
-        // Use a newer Flyway version that supports PostgreSQL 17.x
-        implementation 'org.flywaydb:flyway-core:11.8.1'
+	// Flyway - версии будут управляться через dependencyManagement
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql' // Явно добавляем модуль для PostgreSQL
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 
-	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'org.postgresql:postgresql' // Версия будет управляться Spring Boot BOM или dependencyManagement
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
