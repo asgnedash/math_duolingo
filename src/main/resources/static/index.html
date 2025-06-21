@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Duolingo Math Web Trainer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        #task { margin-top: 1em; font-size: 1.2em; }
+        #controls { margin-top: 1em; }
+    </style>
+</head>
+<body>
+    <h1>Duolingo Math Web Trainer</h1>
+
+    <div id="registration">
+        <label>Telegram ID: <input type="number" id="telegramId"></label>
+        <label>Username: <input type="text" id="username"></label>
+        <button id="registerBtn">Register</button>
+    </div>
+
+    <div id="training" style="display:none;">
+        <button id="nextBtn">Get Next Task</button>
+        <div id="task"></div>
+        <div id="controls" style="display:none;">
+            <button id="correctBtn">Правильно</button>
+            <button id="incorrectBtn">Неправильно</button>
+        </div>
+        <div id="feedback"></div>
+    </div>
+
+    <script>
+        let userId = null;
+        let currentTaskId = null;
+        document.getElementById('registerBtn').onclick = function() {
+            const telegramId = document.getElementById('telegramId').value;
+            const username = document.getElementById('username').value || 'User_' + telegramId;
+            fetch('/api/training/user?telegramId=' + telegramId + '&username=' + encodeURIComponent(username), { method: 'POST'})
+                .then(r => r.json())
+                .then(u => {
+                    userId = u.id;
+                    document.getElementById('registration').style.display = 'none';
+                    document.getElementById('training').style.display = 'block';
+                });
+        };
+
+        document.getElementById('nextBtn').onclick = function() {
+            if (userId == null) return;
+            fetch('/api/training/next-task?userId=' + userId)
+                .then(r => r.json())
+                .then(task => {
+                    if (task.id) {
+                        currentTaskId = task.id;
+                        document.getElementById('task').textContent = task.content;
+                        document.getElementById('controls').style.display = 'block';
+                        document.getElementById('feedback').textContent = '';
+                    } else {
+                        document.getElementById('task').textContent = task;
+                        document.getElementById('controls').style.display = 'none';
+                        currentTaskId = null;
+                    }
+                });
+        };
+
+        function sendAnswer(isCorrect) {
+            fetch('/api/training/answer?userId=' + userId + '&taskId=' + currentTaskId + '&isCorrect=' + isCorrect, { method: 'POST' })
+                .then(r => r.text())
+                .then(msg => {
+                    document.getElementById('feedback').textContent = msg;
+                    document.getElementById('controls').style.display = 'none';
+                });
+        }
+
+        document.getElementById('correctBtn').onclick = () => sendAnswer(true);
+        document.getElementById('incorrectBtn').onclick = () => sendAnswer(false);
+    </script>
+</body>
+</html>
