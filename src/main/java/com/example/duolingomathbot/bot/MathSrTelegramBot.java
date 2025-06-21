@@ -4,7 +4,9 @@ import com.example.duolingomathbot.model.Task;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.model.Topic;
 import com.example.duolingomathbot.model.TopicType;
+import com.example.duolingomathbot.model.Magnet;
 import com.example.duolingomathbot.service.UserTrainingService;
+import com.example.duolingomathbot.service.MagnetService;
 import com.example.duolingomathbot.bot.BotConfig;
 import com.example.duolingomathbot.config.SrsConfig;
 import jakarta.annotation.PostConstruct;
@@ -15,6 +17,7 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
@@ -40,6 +43,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
     private final BotConfig botConfig;
     private final UserTrainingService userTrainingService;
+    private final MagnetService magnetService;
 
     // Храним ID текущей задачи для каждого пользователя (internalUserId -> taskId)
     private final ConcurrentHashMap<Long, Long> userCurrentTaskIdMap = new ConcurrentHashMap<>();
@@ -92,14 +96,27 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         TopicType orderType;
     }
 
+    private enum AddMagnetStep {
+        WAITING_FOR_FILE,
+        WAITING_FOR_MESSAGE
+    }
+
+    private static class MagnetData {
+        AddMagnetStep step;
+        String fileId;
+        String message;
+    }
+
     private final ConcurrentHashMap<Long, PendingTaskData> pendingTasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ManageState> manageStates = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, MagnetData> magnetStates = new ConcurrentHashMap<>();
 
 
-    public MathSrTelegramBot(BotConfig botConfig, UserTrainingService userTrainingService) {
+    public MathSrTelegramBot(BotConfig botConfig, UserTrainingService userTrainingService, MagnetService magnetService) {
         super(botConfig.getBotToken());
         this.botConfig = botConfig;
         this.userTrainingService = userTrainingService;
+        this.magnetService = magnetService;
     }
 
     @Override
@@ -127,6 +144,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             commands.add(new BotCommand("/cancel", "Отмена текущего действия"));
             commands.add(new BotCommand("/addtask", "Добавить задачу (админ)"));
             commands.add(new BotCommand("/managetopics", "Управление темами (админ)"));
+            commands.add(new BotCommand("/makemagnet", "Создать лидмагнит (админ)"));
 
             SetMyCommands setMyCommands = new SetMyCommands(); // Создаем объект
             setMyCommands.setCommands(commands);               // Устанавливаем команды
@@ -134,7 +152,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics");
+            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /makemagnet");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -146,6 +164,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             handleTextMessage(update);
         } else if (update.hasMessage() && update.getMessage().hasPhoto()) {
             handlePhotoMessage(update);
+        } else if (update.hasMessage() && update.getMessage().hasDocument()) {
+            handleDocumentMessage(update);
         } else if (update.hasCallbackQuery()) {
             handleCallbackQuery(update);
         }
@@ -214,6 +234,20 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
+        MagnetData magnetData = magnetStates.get(chatId);
+        if (magnetData != null && magnetData.step == AddMagnetStep.WAITING_FOR_MESSAGE) {
+            magnetData.message = messageText;
+            Magnet magnet = magnetService.createMagnet(magnetData.fileId, magnetData.message);
+            magnetStates.remove(chatId);
+            String link = "https://t.me/" + getBotUsername() + "?start=" + magnet.getStartId();
+            sendMessage(chatId, "Лидмагнит успешно создан! Вот ссылка: " + link);
+            return;
+        }
+        if (magnetData != null && magnetData.step == AddMagnetStep.WAITING_FOR_FILE) {
+            sendMessage(chatId, "Пожалуйста, пришлите PDF файл.");
+            return;
+        }
+
         if ("/addtask".equals(messageText)) {
             if (chatId != ADMIN_CHAT_ID) {
                 sendMessage(chatId, "Команда доступна только администратору");
@@ -223,6 +257,18 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             data.step = AddTaskStep.WAITING_FOR_PHOTO;
             pendingTasks.put(chatId, data);
             sendMessage(chatId, "Пришлите изображение задачи");
+            return;
+        }
+
+        if ("/makemagnet".equals(messageText)) {
+            if (chatId != ADMIN_CHAT_ID) {
+                sendMessage(chatId, "Команда доступна только администратору");
+                return;
+            }
+            MagnetData md = new MagnetData();
+            md.step = AddMagnetStep.WAITING_FOR_FILE;
+            magnetStates.put(chatId, md);
+            sendMessage(chatId, "Пришлите PDF файл лидмагнита:");
             return;
         }
 
@@ -244,8 +290,24 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
-        if ("/start".equals(messageText)) {
-            sendMessage(chatId, "Добро пожаловать! Используйте /train для получения задачи.");
+        if (messageText.startsWith("/start")) {
+            String[] parts = messageText.split("\\s+", 2);
+            if (parts.length > 1) {
+                try {
+                    int startId = Integer.parseInt(parts[1]);
+                    Optional<Magnet> opt = magnetService.getByStartId(startId);
+                    if (opt.isPresent()) {
+                        Magnet m = opt.get();
+                        sendDocument(chatId, m.getFileId(), m.getMessage());
+                    } else {
+                        sendMessage(chatId, "Ссылка недействительна");
+                    }
+                } catch (NumberFormatException e) {
+                    sendMessage(chatId, "Неверный параметр ссылки");
+                }
+            } else {
+                sendMessage(chatId, "Добро пожаловать! Используйте /train для получения задачи.");
+            }
         } else if ("/train".equals(messageText) || "задача".equalsIgnoreCase(messageText) || "next".equalsIgnoreCase(messageText)) {
             sendNextTask(chatId, internalUserId, true);
         } else if ("/help".equals(messageText)) {
@@ -341,6 +403,18 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         data.fileId = fileId;
         data.step = AddTaskStep.WAITING_FOR_ANSWER;
         sendMessage(chatId, "Введите правильный ответ на задачу");
+    }
+
+    private void handleDocumentMessage(Update update) {
+        long chatId = update.getMessage().getChatId();
+        MagnetData magnetData = magnetStates.get(chatId);
+        if (magnetData == null || magnetData.step != AddMagnetStep.WAITING_FOR_FILE) {
+            return;
+        }
+        String fileId = update.getMessage().getDocument().getFileId();
+        magnetData.fileId = fileId;
+        magnetData.step = AddMagnetStep.WAITING_FOR_MESSAGE;
+        sendMessage(chatId, "Введите приветственное сообщение:");
     }
 
     private void handleCallbackQuery(Update update) {
@@ -530,9 +604,20 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         tryExecute(message);
     }
 
+    private void sendDocument(long chatId, String fileId, String caption) {
+        SendDocument doc = new SendDocument();
+        doc.setChatId(String.valueOf(chatId));
+        doc.setDocument(new InputFile(fileId));
+        if (caption != null) {
+            doc.setCaption(caption);
+        }
+        tryExecute(doc);
+    }
+
     private void resetUserState(long chatId, Long internalUserId) {
         pendingTasks.remove(chatId);
         manageStates.remove(chatId);
+        magnetStates.remove(chatId);
         if (internalUserId != null) {
             userCurrentTaskIdMap.remove(internalUserId);
             userSessions.remove(internalUserId);
@@ -644,6 +729,14 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             execute(photo);
         } catch (TelegramApiException e) {
             logger.error("Telegram API execution error for SendPhoto: {}", e.getMessage(), e);
+        }
+    }
+
+    private void tryExecute(SendDocument document) {
+        try {
+            execute(document);
+        } catch (TelegramApiException e) {
+            logger.error("Telegram API execution error for SendDocument: {}", e.getMessage(), e);
         }
     }
 
