@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        #panel button { display: block; margin: 0.5em 0; }
+        #addTaskForm { margin-top: 1em; }
+    </style>
+</head>
+<body>
+<h1>Админ панель</h1>
+<div id="login">
+    <label>Пароль: <input type="password" id="password"></label>
+    <button id="loginBtn">Войти</button>
+</div>
+<div id="panel" style="display:none;">
+    <button id="statsBtn">Посмотреть статистику</button>
+    <button id="tasksBtn">Посмотреть банк задач</button>
+    <button id="topicsBtn">Посмотреть темы</button>
+    <button id="addTopicBtn">Добавить тему</button>
+    <button id="addTaskBtn">Добавить задачу</button>
+</div>
+<div id="addTaskForm" style="display:none;">
+    <input type="file" id="taskImage" accept="image/*"><br>
+    <label>Ответ: <input type="text" id="taskAnswer"></label><br>
+    <label>Тема: <select id="topicSelect"></select></label><br>
+    <button id="saveTaskBtn">Сохранить задачу</button>
+</div>
+<script>
+const adminPassword = '262398881';
+
+const loginBtn = document.getElementById('loginBtn');
+const panel = document.getElementById('panel');
+const loginDiv = document.getElementById('login');
+loginBtn.onclick = function() {
+    const pass = document.getElementById('password').value;
+    if (pass === adminPassword) {
+        loginDiv.style.display = 'none';
+        panel.style.display = 'block';
+    } else {
+        alert('Неверный пароль');
+    }
+};
+
+document.getElementById('addTaskBtn').onclick = function() {
+    panel.style.display = 'none';
+    document.getElementById('addTaskForm').style.display = 'block';
+    fetch('/api/admin/topics').then(r => r.json()).then(list => {
+        const select = document.getElementById('topicSelect');
+        select.innerHTML = '';
+        list.forEach(t => {
+            const o = document.createElement('option');
+            o.value = t.id;
+            o.textContent = t.name;
+            select.appendChild(o);
+        });
+    });
+};
+
+document.getElementById('saveTaskBtn').onclick = function() {
+    const file = document.getElementById('taskImage').files[0];
+    const answer = document.getElementById('taskAnswer').value;
+    const topicId = document.getElementById('topicSelect').value;
+    if (!file || !answer) { alert('Заполните все поля'); return; }
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('answer', answer);
+    formData.append('topicId', topicId);
+    fetch('/api/admin/task', { method: 'POST', body: formData })
+        .then(r => r.text())
+        .then(msg => {
+            alert('Задача сохранена, id=' + msg);
+            document.getElementById('addTaskForm').style.display = 'none';
+            panel.style.display = 'block';
+        });
+};
+</script>
+</body>
+</html>
