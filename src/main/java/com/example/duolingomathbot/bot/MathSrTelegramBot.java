@@ -32,6 +32,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Telegram bot implementation for delivering math training tasks.
@@ -140,6 +143,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
     private final ConcurrentHashMap<Long, MakeTestState> makeTestStates = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, TestSession> testSessions = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
 
     public MathSrTelegramBot(BotConfig botConfig, UserTrainingService userTrainingService, MagnetService magnetService) {
@@ -393,6 +397,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                     if (magnetOpt.isPresent()) {
                         Magnet m = magnetOpt.get();
                         sendDocument(chatId, m.getFileId(), m.getMessage());
+                        sendExamPromptDelayed(chatId);
                     } else {
                         Optional<Test> testOpt = userTrainingService.getTestByStartId(startId);
                         if (testOpt.isPresent()) {
@@ -825,6 +830,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             String prefix = isCorrect ? "Верно\n" : "Неверно\n";
             sendMessage(chatId, prefix + sb.toString());
             testSessions.remove(internalUserId);
+            sendExamPromptDelayed(chatId);
         }
     }
 
@@ -958,6 +964,10 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         msg.setText("Выберите, к какому экзамену вы готовитесь");
         msg.setReplyMarkup(markup);
         tryExecute(msg);
+    }
+
+    private void sendExamPromptDelayed(long chatId) {
+        scheduler.schedule(() -> sendExamPrompt(chatId), 5, TimeUnit.SECONDS);
     }
 
     private void sendSettings(long chatId, Long userId) {
