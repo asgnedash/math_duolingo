@@ -978,6 +978,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     private void sendSettings(long chatId, Long userId) {
         Optional<TopicType> examOpt = userTrainingService.getUserExam(userId);
         String examName = examOpt.map(TopicType::getDisplayName).orElse("не выбран");
+
         InlineKeyboardButton changeBtn = InlineKeyboardButton.builder()
                 .text("Изменить экзамен")
                 .callbackData("settings_change_exam")
