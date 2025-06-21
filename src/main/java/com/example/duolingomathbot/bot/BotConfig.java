@@ -34,8 +34,4 @@ public class BotConfig {
     public String getBotToken() {
         return botToken;
     }
-
-    public long getAdminChatId() {
-        return adminChatId;
-    }
 }
