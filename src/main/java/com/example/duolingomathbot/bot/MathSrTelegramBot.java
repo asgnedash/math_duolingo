@@ -41,7 +41,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     // Это для оптимизации, чтобы не дергать БД каждый раз за internalUserId
     private final ConcurrentHashMap<Long, Long> telegramToInternalUserIdMap = new ConcurrentHashMap<>();
 
-    private final long adminChatId;
+    private static final long ADMIN_CHAT_ID = 262398881L;
 
     private enum AddTaskStep {
         WAITING_FOR_PHOTO,
@@ -172,7 +172,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/addtask".equals(messageText)) {
-            if (chatId != adminChatId) {
+            if (chatId != ADMIN_CHAT_ID) {
+
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
@@ -193,7 +194,12 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                     "Команда /train или сообщение 'задача' - получить новую задачу.");
         } else {
             sendMessage(chatId, "Привет, " + user.getUsername() + "! Используй команду /train или 'задача', чтобы получить задание. /help для помощи.");
+          
         }
+        String fileId = update.getMessage().getPhoto().get(update.getMessage().getPhoto().size() - 1).getFileId();
+        data.fileId = fileId;
+        data.step = AddTaskStep.WAITING_FOR_ANSWER;
+        sendMessage(chatId, "Введите правильный ответ на задачу");
     }
 
     private void processAddTaskText(long chatId, String text) {
@@ -384,7 +390,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         message.setReplyMarkup(markup);
         tryExecute(message);
     }
-  
+
     private void tryExecute(org.telegram.telegrambots.meta.api.methods.BotApiMethod<?> method) {
         try {
             execute(method);
