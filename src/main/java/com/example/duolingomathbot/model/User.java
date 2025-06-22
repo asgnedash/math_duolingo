@@ -38,6 +38,15 @@ public class User {
     @Column(name = "all_points", nullable = false)
     private int allPoints = 0;
 
+    @Column(name = "train_notification", nullable = false)
+    private boolean trainNotification = true;
+
+    @Column(name = "streak", nullable = false)
+    private int streak = 0;
+
+    @Column(name = "last_training_date")
+    private java.time.LocalDate lastTrainingDate;
+
     public User() {
     }
 
@@ -119,6 +128,30 @@ public class User {
 
     public void setAllPoints(int allPoints) {
         this.allPoints = allPoints;
+    }
+
+    public boolean isTrainNotification() {
+        return trainNotification;
+    }
+
+    public void setTrainNotification(boolean trainNotification) {
+        this.trainNotification = trainNotification;
+    }
+
+    public int getStreak() {
+        return streak;
+    }
+
+    public void setStreak(int streak) {
+        this.streak = streak;
+    }
+
+    public java.time.LocalDate getLastTrainingDate() {
+        return lastTrainingDate;
+    }
+
+    public void setLastTrainingDate(java.time.LocalDate lastTrainingDate) {
+        this.lastTrainingDate = lastTrainingDate;
     }
 
     public void addPoints(int pts) {

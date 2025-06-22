@@ -151,6 +151,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         java.util.List<Task> tasks;
         int index;
         int correct;
+        int startPoints;
+        int startStreak;
     }
 
     private final ConcurrentHashMap<Long, MakeTestState> makeTestStates = new ConcurrentHashMap<>();
@@ -406,6 +408,9 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         if ("/test".equals(messageText)) {
             TestSession session = new TestSession();
             session.step = TestSessionStep.WAITING_ID;
+            User full = userTrainingService.getOrCreateUser(user.getTelegramId(), user.getUsername());
+            session.startPoints = full.getAllPoints();
+            session.startStreak = full.getStreak();
             testSessions.put(internalUserId, session);
             sendMessage(chatId, "Введите номер теста:");
             return;
@@ -462,6 +467,9 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                             } else {
                                 session.index = 0;
                                 session.correct = 0;
+                                User full = userTrainingService.getOrCreateUser(user.getTelegramId(), user.getUsername());
+                                session.startPoints = full.getAllPoints();
+                                session.startStreak = full.getStreak();
                                 testSessions.put(internalUserId, session);
                                 sendTestTask(chatId, session, null);
                             }
@@ -741,6 +749,12 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             return;
         }
 
+        if ("settings_disable_train".equals(callbackData)) {
+            userTrainingService.updateTrainNotification(internalUserId, false);
+            sendMessage(chatId, "Уведомления о тренировках отключены");
+            return;
+        }
+
         if (callbackData.startsWith("exam_select_")) {
             String typeStr = callbackData.substring("exam_select_".length());
             TopicType type = TopicType.valueOf(typeStr);
@@ -885,6 +899,15 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 if (session.test.getAdvice() != null) sb.append("\n\n").append(session.test.getAdvice());
             }
             String prefix = isCorrect ? "Верно\n" : "Неверно\n";
+            User full = userTrainingService.getUser(internalUserId).orElse(null);
+            int earned = 0;
+            int streak = 0;
+            if (full != null) {
+                earned = full.getAllPoints() - session.startPoints;
+                streak = full.getStreak();
+            }
+            sb.append("\nНабрано баллов: ").append(earned)
+              .append("\nСтрик: ").append(streak).append(' ').append(dayWord(streak));
             sendMessage(chatId, prefix + sb.toString());
             testSessions.remove(internalUserId);
             sendExamPromptDelayed(chatId);
@@ -914,6 +937,13 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         message.setParseMode("MarkdownV2");
         message.setText(text);
         tryExecute(message);
+    }
+
+    private String dayWord(int n) {
+        int nAbs = Math.abs(n);
+        if (nAbs % 10 == 1 && nAbs % 100 != 11) return "день";
+        if (nAbs % 10 >= 2 && nAbs % 10 <= 4 && (nAbs % 100 < 10 || nAbs % 100 >= 20)) return "дня";
+        return "дней";
     }
 
     private String escapeMarkdownV2(String text) {
@@ -1079,8 +1109,15 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
                 .text("Изменить экзамен")
                 .callbackData("settings_change_exam")
                 .build();
+        InlineKeyboardButton disableTrainBtn = InlineKeyboardButton.builder()
+                .text("Откл. уведомления о тренировках")
+                .callbackData("settings_disable_train")
+                .build();
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(Collections.singletonList(Collections.singletonList(changeBtn)));
+        java.util.List<java.util.List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
+        rows.add(java.util.List.of(changeBtn));
+        rows.add(java.util.List.of(disableTrainBtn));
+        markup.setKeyboard(rows);
 
         SendMessage msg = new SendMessage();
         msg.setChatId(String.valueOf(chatId));

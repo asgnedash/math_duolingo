@@ -73,12 +73,25 @@ public class UserTrainingService {
     }
 
     @Transactional
+    public void updateTrainNotification(Long userId, boolean value) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+        user.setTrainNotification(value);
+        userRepository.save(user);
+    }
+
+    @Transactional
     public void finishMarathonForAll() {
         List<User> users = userRepository.findByMarathonTrue();
         for (User u : users) {
             u.setMarathon(false);
         }
         userRepository.saveAll(users);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<User> getUser(Long userId) {
+        return userRepository.findById(userId);
     }
 
     @Transactional
@@ -273,6 +286,18 @@ public class UserTrainingService {
         userTaskAttemptRepository.save(attempt);
         userTopicProgressRepository.save(progress);
         user.incrementTrainingCounter();
+
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Europe/Moscow"));
+        java.time.LocalDate last = user.getLastTrainingDate();
+        if (last == null || !last.equals(today)) {
+            if (last != null && last.plusDays(1).equals(today)) {
+                user.setStreak(user.getStreak() + 1);
+            } else {
+                user.setStreak(1);
+            }
+            user.setLastTrainingDate(today);
+        }
+
         userRepository.save(user);
     }
 
