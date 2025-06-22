@@ -102,12 +102,17 @@ public class MarathonService {
     }
 
     private void sendEntry(long chatId, MarathonEntry entry) {
-        bot.execute(new org.telegram.telegrambots.meta.api.methods.send.SendMessage(String.valueOf(chatId), entry.text));
-        for (String fileId : entry.fileIds) {
-            org.telegram.telegrambots.meta.api.methods.send.SendPhoto photo = new org.telegram.telegrambots.meta.api.methods.send.SendPhoto();
-            photo.setChatId(String.valueOf(chatId));
-            photo.setPhoto(new org.telegram.telegrambots.meta.api.objects.InputFile(fileId));
-            bot.execute(photo);
+        try {
+            bot.execute(new org.telegram.telegrambots.meta.api.methods.send.SendMessage(String.valueOf(chatId), entry.text));
+            for (String fileId : entry.fileIds) {
+                org.telegram.telegrambots.meta.api.methods.send.SendPhoto photo = new org.telegram.telegrambots.meta.api.methods.send.SendPhoto();
+                photo.setChatId(String.valueOf(chatId));
+                photo.setPhoto(new org.telegram.telegrambots.meta.api.objects.InputFile(fileId));
+                bot.execute(photo);
+            }
+        } catch (org.telegram.telegrambots.meta.exceptions.TelegramApiException e) {
+            // In production we would log this exception, but for now we simply output the stack trace
+            e.printStackTrace();
         }
     }
 }
