@@ -69,7 +69,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
     private final ConcurrentHashMap<Long, TrainingSession> userSessions = new ConcurrentHashMap<>();
 
-    private static final long ADMIN_CHAT_ID = 262398881L;
+    private final long adminChatId;
 
     private enum AddTaskStep {
         WAITING_FOR_PHOTO,
@@ -151,6 +151,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         this.botConfig = botConfig;
         this.userTrainingService = userTrainingService;
         this.magnetService = magnetService;
+        this.adminChatId = botConfig.getAdminChatId();
     }
 
     @Override
@@ -324,7 +325,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/addtask".equals(messageText)) {
-            if (chatId != ADMIN_CHAT_ID) {
+            if (chatId != adminChatId) {
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
@@ -336,7 +337,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/makemagnet".equals(messageText)) {
-            if (chatId != ADMIN_CHAT_ID) {
+            if (chatId != adminChatId) {
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
@@ -348,7 +349,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/managetopics".equals(messageText)) {
-            if (chatId != ADMIN_CHAT_ID) {
+            if (chatId != adminChatId) {
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
@@ -360,7 +361,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/maketest".equals(messageText)) {
-            if (chatId != ADMIN_CHAT_ID) {
+            if (chatId != adminChatId) {
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
@@ -388,7 +389,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
         }
 
         if ("/finishmarathon".equals(messageText)) {
-            if (chatId != ADMIN_CHAT_ID) {
+            if (chatId != adminChatId) {
                 sendMessage(chatId, "Команда доступна только администратору");
                 return;
             }
