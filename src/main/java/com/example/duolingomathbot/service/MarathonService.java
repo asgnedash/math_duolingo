@@ -6,9 +6,12 @@ import com.example.duolingomathbot.model.TopicType;
 import com.example.duolingomathbot.model.User;
 import com.example.duolingomathbot.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
@@ -20,6 +23,7 @@ import java.util.*;
 @Service
 public class MarathonService {
 
+    private static final Logger logger = LoggerFactory.getLogger(MarathonService.class);
     private final MarathonConfig config;
     private final UserRepository userRepository;
     private final MathSrTelegramBot bot;
@@ -45,7 +49,15 @@ public class MarathonService {
         String range = sheet + "!A:M";
         String url = "https://sheets.googleapis.com/v4/spreadsheets/" +
                 config.getSpreadsheetId() + "/values/" + range + "?key=" + config.getApiKey();
-        ResponseEntity<Map> resp = restTemplate.getForEntity(url, Map.class);
+
+        ResponseEntity<Map> resp;
+        try {
+            resp = restTemplate.getForEntity(url, Map.class);
+        } catch (RestClientException ex) {
+            logger.error("Failed to load marathon data from Google Sheets: {}", ex.getMessage());
+            return java.util.Collections.emptyList();
+        }
+
         List<MarathonEntry> result = new ArrayList<>();
         Object valuesObj = resp.getBody().get("values");
         if (valuesObj instanceof List<?> values) {
@@ -111,8 +123,7 @@ public class MarathonService {
                 bot.execute(photo);
             }
         } catch (org.telegram.telegrambots.meta.exceptions.TelegramApiException e) {
-            // In production we would log this exception, but for now we simply output the stack trace
-            e.printStackTrace();
+            logger.error("Error sending marathon message: {}", e.getMessage());
         }
     }
 }
