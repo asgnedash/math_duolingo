@@ -19,6 +19,14 @@ import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.send.SendDocument;
+import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.PhotoSize;
+import org.telegram.telegrambots.meta.api.objects.Video;
+import org.telegram.telegrambots.meta.api.objects.Audio;
+import org.telegram.telegrambots.meta.api.objects.Voice;
+import org.telegram.telegrambots.meta.api.objects.VideoNote;
+import org.telegram.telegrambots.meta.api.objects.Sticker;
+import org.telegram.telegrambots.meta.api.objects.Animation;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
@@ -115,6 +123,10 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
     private final ConcurrentHashMap<Long, ManageState> manageStates = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, MagnetData> magnetStates = new ConcurrentHashMap<>();
 
+    private enum GetFileIdStep { WAITING_FOR_FILE }
+
+    private final ConcurrentHashMap<Long, GetFileIdStep> fileIdStates = new ConcurrentHashMap<>();
+
     private enum MakeTestStep {
         WAITING_COUNT,
         WAITING_PHOTO,
@@ -180,6 +192,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             commands.add(new BotCommand("/addtask", "Добавить задачу (админ)"));
             commands.add(new BotCommand("/managetopics", "Управление темами (админ)"));
             commands.add(new BotCommand("/makemagnet", "Создать лидмагнит (админ)"));
+            commands.add(new BotCommand("/getfileid", "Получить fileId (админ)"));
             commands.add(new BotCommand("/maketest", "Создать тест (админ)"));
             commands.add(new BotCommand("/test", "Пройти тест"));
             commands.add(new BotCommand("/settings", "Настройки"));
@@ -192,7 +205,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /maketest, /test, /makemagnet, /settings, /marathon, /finishmarathon");
+            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /makemagnet, /getfileid, /maketest, /test, /settings, /marathon, /finishmarathon");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -200,6 +213,14 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
+        if (update.hasMessage()) {
+            long chatId = update.getMessage().getChatId();
+            if (fileIdStates.containsKey(chatId) && !update.getMessage().hasText()) {
+                handleGetFileId(update.getMessage());
+                return;
+            }
+        }
+
         if (update.hasMessage() && update.getMessage().hasText()) {
             handleTextMessage(update);
         } else if (update.hasMessage() && update.getMessage().hasPhoto()) {
@@ -345,6 +366,16 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             md.step = AddMagnetStep.WAITING_FOR_FILE;
             magnetStates.put(chatId, md);
             sendMessage(chatId, "Пришлите PDF файл лидмагнита:");
+            return;
+        }
+
+        if ("/getfileid".equals(messageText)) {
+            if (chatId != adminChatId) {
+                sendMessage(chatId, "Команда доступна только администратору");
+                return;
+            }
+            fileIdStates.put(chatId, GetFileIdStep.WAITING_FOR_FILE);
+            sendMessage(chatId, "Пришлите файл, чтобы получить его fileId:");
             return;
         }
 
@@ -875,6 +906,50 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             doc.setCaption(caption);
         }
         tryExecute(doc);
+    }
+
+    private void sendMarkdownMessage(long chatId, String text) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setParseMode("MarkdownV2");
+        message.setText(text);
+        tryExecute(message);
+    }
+
+    private String escapeMarkdownV2(String text) {
+        return text.replaceAll("([_\\*\\[\\]()~`>#+\\-=|{}.!])", "\\\\$1");
+    }
+
+    private void handleGetFileId(Message message) {
+        long chatId = message.getChatId();
+        String fileId = null;
+        if (message.hasDocument()) {
+            fileId = message.getDocument().getFileId();
+        } else if (message.hasPhoto()) {
+            java.util.List<PhotoSize> photos = message.getPhoto();
+            fileId = photos.get(photos.size() - 1).getFileId();
+        } else if (message.hasVideo()) {
+            fileId = message.getVideo().getFileId();
+        } else if (message.hasAudio()) {
+            fileId = message.getAudio().getFileId();
+        } else if (message.hasVoice()) {
+            fileId = message.getVoice().getFileId();
+        } else if (message.hasVideoNote()) {
+            fileId = message.getVideoNote().getFileId();
+        } else if (message.hasSticker()) {
+            fileId = message.getSticker().getFileId();
+        } else if (message.hasAnimation()) {
+            fileId = message.getAnimation().getFileId();
+        }
+
+        if (fileId != null) {
+            fileIdStates.remove(chatId);
+            String escaped = escapeMarkdownV2(fileId);
+            String text = "[`" + escaped + "`](tg://copy?text=" + fileId + ")";
+            sendMarkdownMessage(chatId, text);
+        } else {
+            sendMessage(chatId, "Не удалось определить file_id. Попробуйте отправить другой файл.");
+        }
     }
 
     private void resetUserState(long chatId, Long internalUserId) {

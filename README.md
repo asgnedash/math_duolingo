@@ -39,4 +39,4 @@ These correspond to the properties `spring.datasource.*` and `telegram.bot.*` in
 java -jar build/libs/duolingomathbot-0.0.1-SNAPSHOT.jar
 ```
 
-When the application starts, it registers the Telegram bot and you can interact with it through the usual bot commands (`/start`, `/train`, `/cancel`, etc.).
+When the application starts, it registers the Telegram bot and you can interact with it through the usual bot commands (`/start`, `/train`, `/cancel`, etc.). Administrators can also use `/getfileid` to obtain a `fileId` for any sent file.
