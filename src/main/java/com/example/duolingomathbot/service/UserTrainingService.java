@@ -171,6 +171,20 @@ public class UserTrainingService {
         return Optional.of(tasks.get(random.nextInt(tasks.size())));
     }
 
+    private int calculatePoints(double difficulty) {
+        if (difficulty > 0.8) return 15;
+        if (difficulty >= 0.7) return 10;
+        if (difficulty >= 0.6) return 9;
+        if (difficulty >= 0.55) return 8;
+        if (difficulty >= 0.5) return 7;
+        if (difficulty >= 0.45) return 6;
+        if (difficulty >= 0.4) return 5;
+        if (difficulty >= 0.3) return 4;
+        if (difficulty >= 0.2) return 3;
+        if (difficulty >= 0.1) return 2;
+        return 1;
+    }
+
     /**
      * Processes a textual answer from a user. The provided answer is compared
      * with the correct answer stored for the task and then delegated to the
@@ -212,6 +226,8 @@ public class UserTrainingService {
         UserTaskAttempt attempt = new UserTaskAttempt(user, task, isCorrect, user.getTrainingCounter());
 
         if (isCorrect) {
+            int points = calculatePoints(task.getDifficulty());
+            user.addPoints(points);
             if (progress.isCompleted()) {
                 int currentStageIndex = progress.getTrainingStageIndex();
                 int nextStageIndex = Math.min(currentStageIndex + 1, SrsConfig.SRS_STAGES_INTERVALS.size() - 1);

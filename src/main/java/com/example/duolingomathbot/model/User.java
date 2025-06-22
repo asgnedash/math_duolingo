@@ -29,6 +29,15 @@ public class User {
     @Column(name = "marathon", nullable = false)
     private boolean marathon = false;
 
+    @Column(name = "weekly_points", nullable = false)
+    private int weeklyPoints = 0;
+
+    @Column(name = "monthly_points", nullable = false)
+    private int monthlyPoints = 0;
+
+    @Column(name = "all_points", nullable = false)
+    private int allPoints = 0;
+
     public User() {
     }
 
@@ -86,6 +95,36 @@ public class User {
 
     public void setMarathon(boolean marathon) {
         this.marathon = marathon;
+    }
+
+    public int getWeeklyPoints() {
+        return weeklyPoints;
+    }
+
+    public void setWeeklyPoints(int weeklyPoints) {
+        this.weeklyPoints = weeklyPoints;
+    }
+
+    public int getMonthlyPoints() {
+        return monthlyPoints;
+    }
+
+    public void setMonthlyPoints(int monthlyPoints) {
+        this.monthlyPoints = monthlyPoints;
+    }
+
+    public int getAllPoints() {
+        return allPoints;
+    }
+
+    public void setAllPoints(int allPoints) {
+        this.allPoints = allPoints;
+    }
+
+    public void addPoints(int pts) {
+        this.weeklyPoints += pts;
+        this.monthlyPoints += pts;
+        this.allPoints += pts;
     }
 
     public void incrementTrainingCounter() {
