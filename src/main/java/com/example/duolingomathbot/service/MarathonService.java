@@ -24,7 +24,6 @@ import java.util.*;
 public class MarathonService {
 
     private static final Logger logger = LoggerFactory.getLogger(MarathonService.class);
-
     private final MarathonConfig config;
     private final UserRepository userRepository;
     private final MathSrTelegramBot bot;
