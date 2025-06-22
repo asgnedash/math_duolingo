@@ -182,6 +182,8 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             commands.add(new BotCommand("/maketest", "Создать тест (админ)"));
             commands.add(new BotCommand("/test", "Пройти тест"));
             commands.add(new BotCommand("/settings", "Настройки"));
+            commands.add(new BotCommand("/marathon", "Участвовать в марафоне"));
+            commands.add(new BotCommand("/finishmarathon", "Завершить марафон (админ)"));
 
             SetMyCommands setMyCommands = new SetMyCommands(); // Создаем объект
             setMyCommands.setCommands(commands);               // Устанавливаем команды
@@ -189,7 +191,7 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             // setMyCommands.setLanguageCode("ru"); // Опционально, если хотите указать язык для команд
 
             this.execute(setMyCommands); // Выполняем
-            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /maketest, /test, /makemagnet, /settings");
+            logger.info("Bot commands registered: /start, /train, /help, /cancel, /addtask, /managetopics, /maketest, /test, /makemagnet, /settings, /marathon, /finishmarathon");
         } catch (TelegramApiException e) {
             logger.error("Error setting bot commands: " + e.getMessage(), e);
         }
@@ -374,6 +376,24 @@ public class MathSrTelegramBot extends TelegramLongPollingBot {
             session.step = TestSessionStep.WAITING_ID;
             testSessions.put(internalUserId, session);
             sendMessage(chatId, "Введите номер теста:");
+            return;
+        }
+
+        if ("/marathon".equals(messageText)) {
+            userTrainingService.updateUserMarathon(internalUserId, true);
+            Optional<TopicType> ex = userTrainingService.getUserExam(internalUserId);
+            String examName = ex.map(TopicType::getDisplayName).orElse("экзамен не выбран");
+            sendMessage(chatId, "Вы участвуете в марафоне по подготовке к " + examName + "!");
+            return;
+        }
+
+        if ("/finishmarathon".equals(messageText)) {
+            if (chatId != ADMIN_CHAT_ID) {
+                sendMessage(chatId, "Команда доступна только администратору");
+                return;
+            }
+            userTrainingService.finishMarathonForAll();
+            sendMessage(chatId, "Марафон завершен для всех пользователей");
             return;
         }
 

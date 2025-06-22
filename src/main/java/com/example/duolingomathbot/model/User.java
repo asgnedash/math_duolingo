@@ -26,6 +26,9 @@ public class User {
     @Column(name = "exam_type")
     private TopicType exam;
 
+    @Column(name = "marathon", nullable = false)
+    private boolean marathon = false;
+
     public User() {
     }
 
@@ -75,6 +78,14 @@ public class User {
 
     public void setExam(TopicType exam) {
         this.exam = exam;
+    }
+
+    public boolean isMarathon() {
+        return marathon;
+    }
+
+    public void setMarathon(boolean marathon) {
+        this.marathon = marathon;
     }
 
     public void incrementTrainingCounter() {
