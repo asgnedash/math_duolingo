@@ -65,6 +65,23 @@ public class UserTrainingService {
     }
 
     @Transactional
+    public void updateUserMarathon(Long userId, boolean marathon) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+        user.setMarathon(marathon);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void finishMarathonForAll() {
+        List<User> users = userRepository.findByMarathonTrue();
+        for (User u : users) {
+            u.setMarathon(false);
+        }
+        userRepository.saveAll(users);
+    }
+
+    @Transactional
     public Optional<Task> getNextTaskForUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
