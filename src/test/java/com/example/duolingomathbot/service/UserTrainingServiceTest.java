@@ -139,4 +139,32 @@ class UserTrainingServiceTest {
         verify(testRepository).existsByStartId(test.getStartId());
         verify(testRepository).save(any(com.example.duolingomathbot.model.Test.class));
     }
+
+    @Test
+    void updateUserMarathonUpdatesFlag() {
+        User user = new User(3L, "m");
+        when(userRepository.findById(10L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.updateUserMarathon(10L, true);
+
+        assertTrue(user.isMarathon());
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void finishMarathonForAllResetsUsers() {
+        User u1 = new User(4L, "a");
+        u1.setMarathon(true);
+        User u2 = new User(5L, "b");
+        u2.setMarathon(true);
+        when(userRepository.findByMarathonTrue()).thenReturn(java.util.List.of(u1, u2));
+        when(userRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.finishMarathonForAll();
+
+        assertFalse(u1.isMarathon());
+        assertFalse(u2.isMarathon());
+        verify(userRepository).saveAll(any());
+    }
 }

@@ -41,7 +41,9 @@ dependencies {
 	implementation 'org.flywaydb:flyway-database-postgresql' // Явно добавляем модуль для PostgreSQL
 
 	compileOnly 'org.projectlombok:lombok'
-	annotationProcessor 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+
+        annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
 	runtimeOnly 'org.postgresql:postgresql' // Версия будет управляться Spring Boot BOM или dependencyManagement
 
